@@ -14,9 +14,9 @@
         <!-- Overview info -->
         <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2">
             <Label>◉ Check dependencies are installed, such as .NET</Label>
-            <Label>◉ Automatically locate and copy your EFT client files to the path you supply on the next page</Label>
-            <Label>◉ Downgrade your client files to the version SPT uses, if needed</Label>
-            <Label>◉ Download and extract the SPT release files</Label>
+            <Label>◉ Automatically locate and copy your game files to the path you supply on the next page</Label>
+            <Label>◉ Downgrade your game files to the version we use, if needed</Label>
+            <Label>◉ Download and extract our latest runtime files</Label>
         </StackPanel>
         
         <!-- Notes text -->
@@ -26,19 +26,19 @@
         
         <!-- Notes info -->
         <StackPanel Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2">
-            <Label>◉ You do not need to install SPT in the same drive as EFT</Label>
+            <Label>◉ You do not need to install our runtime in the same drive as the game</Label>
             <Label Margin="0" Padding="0">
                 <StackPanel Orientation="Horizontal">
                     <Label VerticalAlignment="Center">◉ This tool does</Label>
                     <TextBlock TextDecorations="Underline" FontWeight="SemiBold" Foreground="Crimson" VerticalAlignment="Center">NOT</TextBlock>
-                    <Label VerticalAlignment="Center">update an existing SPT install</Label>
+                    <Label VerticalAlignment="Center">update an existing runtime install</Label>
                 </StackPanel>
             </Label>
             <Label Margin="0" Padding="0">
                 <StackPanel Orientation="Horizontal">
-                    <Label VerticalAlignment="Center">◉ EFT Updates</Label>
+                    <Label VerticalAlignment="Center">◉ Game updates</Label>
                     <TextBlock TextDecorations="Underline" FontWeight="SemiBold" Foreground="Crimson" VerticalAlignment="Center">CANNOT</TextBlock>
-                    <Label VerticalAlignment="Center">affect this install of SPT</Label>
+                    <Label VerticalAlignment="Center">affect this install of the runtime</Label>
                 </StackPanel>
             </Label>
         </StackPanel>

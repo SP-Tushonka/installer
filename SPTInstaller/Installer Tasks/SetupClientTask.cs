@@ -1,4 +1,4 @@
-﻿using SPTInstaller.Interfaces;
+using SPTInstaller.Interfaces;
 using SPTInstaller.Models;
 using System.Linq;
 using System.Threading.Tasks;
@@ -47,7 +47,9 @@ public class SetupClientTask : InstallerTaskBase
             // copy patcher files to install directory
             SetStatus("Copying Patcher", "", 0);
             
-            var patcherDirInfo = patcherOutputDir.GetDirectories("Patcher*", SearchOption.TopDirectoryOnly).First();
+            var patcherDirInfo =
+                patcherOutputDir.GetDirectories("Patcher*", SearchOption.TopDirectoryOnly).FirstOrDefault()
+                ?? patcherOutputDir;
             
             var copyPatcherResult =
                 FileHelper.CopyDirectoryWithProgress(patcherDirInfo, targetInstallDirInfo, progress);
@@ -80,7 +82,7 @@ public class SetupClientTask : InstallerTaskBase
 
         SetStatus("Creating Shortcuts", "", 0);
 
-        var sptPath = $"{Path.Join(_data.TargetInstallPath, "SPT_Runtime")}";
+        var sptPath = $"{Path.Join(_data.TargetInstallPath, _data.ReleaseInfo?.RuntimeFolderName ?? "SPT_Runtime")}";
         var shortcutResult = ProcessHelper.RunEmbeddedScript("add_shortcuts.ps1", _data.TargetInstallPath, sptPath);
         if (!shortcutResult.Succeeded)
         {
@@ -103,6 +105,6 @@ public class SetupClientTask : InstallerTaskBase
             }
         }
         
-        return Result.FromSuccess("SPT is Setup. Happy Playing!");
+        return Result.FromSuccess("Setup complete. Happy playing!");
     }
 }

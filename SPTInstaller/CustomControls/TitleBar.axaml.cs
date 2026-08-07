@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using System.Windows.Input;
@@ -16,6 +17,21 @@ public partial class TitleBar : UserControl
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+
+        if (e.Handled || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        if (TopLevel.GetTopLevel(this) is Window window)
+        {
+            window.BeginMoveDrag(e);
+        }
     }
     
     public static readonly StyledProperty<string> TitleProperty =

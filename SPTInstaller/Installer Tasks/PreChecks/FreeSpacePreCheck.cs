@@ -17,7 +17,7 @@ public class FreeSpacePreCheck : PreCheckBase
     public override async Task<PreCheckResult> CheckOperation()
     {
         if (_internalData.OriginalGamePath is null)
-            return PreCheckResult.FromError("Could not find EFT game path");
+            return PreCheckResult.FromError("Could not find the game path");
         
         if (_internalData.TargetInstallPath is null)
             return PreCheckResult.FromError("Could not find install target path");
@@ -33,7 +33,7 @@ public class FreeSpacePreCheck : PreCheckBase
             
             if (eftSourceDirSize == -1)
             {
-                return PreCheckResult.FromError("An error occurred while getting the EFT source directory size. This is most likely because EFT is not installed");
+                return PreCheckResult.FromError("An error occurred while getting the game source directory size. This is most likely because the game is not installed");
             }
             
             var availableSize = DriveInfo.GetDrives()
@@ -45,7 +45,7 @@ public class FreeSpacePreCheck : PreCheckBase
             
             var availableSpaceMessage = $"Available Space: {DirectorySizeHelper.SizeSuffix(availableSize, 2)}";
             var requiredSpaceMessage =
-                $"Space Required for EFT Client: {DirectorySizeHelper.SizeSuffix(eftSourceDirSize, 2)} including ~10Gb overhead";
+                $"Space Required for Game Client: {DirectorySizeHelper.SizeSuffix(eftSourceDirSize, 2)} including ~10Gb overhead";
             
             var cacheDriveMessage = "";
             var cacheDriveOK = true;
@@ -75,11 +75,11 @@ public class FreeSpacePreCheck : PreCheckBase
             if (eftSourceDirSize > availableSize)
             {
                 return PreCheckResult.FromError(
-                    $"Not enough free space on {installTargetDirectoryInfo.Root.Name} to install SPT\n\n{availableSpaceMessage}\n{requiredSpaceMessage}\n\n{cacheDriveMessage}");
+                    $"Not enough free space on {installTargetDirectoryInfo.Root.Name} for this install\n\n{availableSpaceMessage}\n{requiredSpaceMessage}\n\n{cacheDriveMessage}");
             }
             
             var okGameSpaceMessage =
-                $"There is enough space available on {installTargetDirectoryInfo.Root.Name} to install SPT.\n\n{availableSpaceMessage}\n{requiredSpaceMessage}\n\n{cacheDriveMessage}";
+                $"There is enough space available on {installTargetDirectoryInfo.Root.Name} for this install.\n\n{availableSpaceMessage}\n{requiredSpaceMessage}\n\n{cacheDriveMessage}";
             
             if (!cacheDriveOK)
             {

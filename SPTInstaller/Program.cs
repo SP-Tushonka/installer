@@ -1,7 +1,7 @@
 ﻿using System.Linq;
-using System.Reflection;
+using System.Reactive;
 using Avalonia;
-using Avalonia.ReactiveUI;
+using ReactiveUI.Avalonia;
 using ReactiveUI;
 using Serilog;
 using Splat;
@@ -12,6 +12,7 @@ using SPTInstaller.Installer_Tasks;
 using SPTInstaller.Installer_Tasks.PreChecks;
 using SPTInstaller.Interfaces;
 using SPTInstaller.Models;
+using SPTInstaller.ViewModels;
 
 namespace SPTInstaller;
 
@@ -36,19 +37,16 @@ internal class Program
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
     {
-        Locator.CurrentMutable.RegisterViewsForViewModels(Assembly.GetExecutingAssembly());
-
         // Register all the things
         // Regestering as base classes so ReactiveUI works correctly. Doesn't seem to like the interfaces :(
         ServiceHelper.Register<InternalData>();
 
 #if !TEST
-        ServiceHelper.Register<PreCheckBase, EftInstalledPreCheck>();
+        ServiceHelper.Register<PreCheckBase, GameInstalledPreCheck>();
         ServiceHelper.Register<PreCheckBase, NetFramework472PreCheck>();
-        ServiceHelper.Register<PreCheckBase, Net10PreCheck>();
-        ServiceHelper.Register<PreCheckBase, AspNetCore10PreCheck>();
+        ServiceHelper.Register<PreCheckBase, DotnetRuntimePreCheck>();
         ServiceHelper.Register<PreCheckBase, FreeSpacePreCheck>();
-        ServiceHelper.Register<PreCheckBase, EftLauncherPreCheck>();
+        ServiceHelper.Register<PreCheckBase, GameLauncherPreCheck>();
 
         ServiceHelper.Register<InstallerTaskBase, InitializationTask>();
         ServiceHelper.Register<InstallerTaskBase, ReleaseCheckTask>();
@@ -81,6 +79,16 @@ internal class Program
         // manually register install controller
         Locator.CurrentMutable.RegisterConstant(installer);
 
-        return AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace().UseReactiveUI();
+        return AppBuilder.Configure<App>()
+            .UseReactiveUI(builder => builder
+                .WithExceptionHandler(Observer.Create<Exception>(ex => Log.Error(ex, "An application exception occurred")))
+                .RegisterView<Views.OverviewView, OverviewViewModel>()
+                .RegisterView<Views.PreChecksView, PreChecksViewModel>()
+                .RegisterView<Views.InstallPathSelectionView, InstallPathSelectionViewModel>()
+                .RegisterView<Views.InstallView, InstallViewModel>()
+                .RegisterView<Views.InstallerUpdateView, InstallerUpdateViewModel>()
+                .RegisterView<Views.MessageView, MessageViewModel>())
+            .UsePlatformDetect()
+            .LogToTrace();
     }
 }

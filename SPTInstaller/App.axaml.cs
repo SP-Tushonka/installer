@@ -3,11 +3,9 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using ReactiveUI;
 using Serilog;
 using SPTInstaller.ViewModels;
 using SPTInstaller.Views;
-using System.Reactive;
 using System.Text;
 using SPTInstaller.Helpers;
 using SPTInstaller.Models;
@@ -48,11 +46,6 @@ public partial class App : Application
             .File(path: LogPath,
                 restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information)
             .CreateLogger();
-        
-        RxApp.DefaultExceptionHandler = Observer.Create<Exception>((exception) =>
-        {
-            Log.Error(exception, "An application exception occurred");
-        });
     }
     
     public override void OnFrameworkInitializationCompleted()
@@ -88,9 +81,11 @@ public partial class App : Application
                 Log.Debug("TraceListener is registered");
             }
             
+            var viewModel = new MainWindowViewModel(providedPath);
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(providedPath),
+                DataContext = viewModel,
+                ViewModel = viewModel,
             };
         }
         

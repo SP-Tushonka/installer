@@ -1,4 +1,4 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -77,6 +77,16 @@
             <TextBlock TextWrapping="Wrap" Margin="3 0"
                        Text="{Binding InstallPath}"
                        Foreground="DodgerBlue" FontWeight="SemiBold" />
+
+            <!-- Hidden when there is nothing to choose between -->
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="0 8 0 0"
+                        IsVisible="{Binding ShowChannels}">
+                <Label Content="Version" FontSize="20" VerticalAlignment="Center" />
+
+                <ComboBox MinWidth="180"
+                          ItemsSource="{Binding Channels}"
+                          SelectedItem="{Binding SelectedChannel}" />
+            </StackPanel>
         </StackPanel>
 
         <!-- Start install button -->

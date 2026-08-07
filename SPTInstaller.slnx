@@ -1,0 +1,8 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <BuildType Name="TEST" />
+  </Configurations>
+  <Project Path="SPTInstaller/SPTInstaller.csproj" />
+</Solution>

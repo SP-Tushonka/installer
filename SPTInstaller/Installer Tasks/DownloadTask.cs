@@ -1,7 +1,8 @@
-﻿using Newtonsoft.Json;
+﻿using System;
 using SPTInstaller.Interfaces;
 using SPTInstaller.Models;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using SPTInstaller.Helpers;
 using SPTInstaller.Models.Mirrors;
@@ -23,19 +24,27 @@ public class DownloadTask : InstallerTaskBase
     
     private async Task<IResult> BuildMirrorList()
     {
-        foreach (var mirror in _data.PatchInfo.Mirrors)
+        var mirrors = _data.PatchInfo.Mirrors;
+        var selectedName = _data.SelectedChannel?.MirrorName;
+
+        // A chosen mirror is honoured exactly, so a failure is reported rather than quietly served
+        // from somewhere the user did not pick.
+        if (!string.IsNullOrWhiteSpace(selectedName))
+        {
+            mirrors = mirrors.Where(mirror =>
+                string.Equals(mirror.Name, selectedName, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (mirrors.Count == 0)
+            {
+                return Result.FromError($"No patch mirror named '{selectedName}' is published for this release.");
+            }
+        }
+
+        foreach (var mirror in mirrors)
         {
             _expectedPatcherHash = mirror.Hash;
-            
-            switch (mirror.Link)
-            {
-                case { } l when l.StartsWith("https://mega"):
-                    _mirrors.Add(new MegaMirrorDownloader(mirror));
-                    break;
-                default:
-                    _mirrors.Add(new HttpMirrorDownloader(mirror));
-                    break;
-            }
+
+            _mirrors.Add(new HttpMirrorDownloader(mirror));
         }
         
         return Result.FromSuccess("Mirrors list ready");
@@ -73,7 +82,7 @@ public class DownloadTask : InstallerTaskBase
         // Note that GetOrDownloadFileAsync handles the cached file hash check, so we don't need to check it first
         foreach (var mirror in _data.ReleaseInfo.Mirrors)
         {
-            SetStatus("Downloading SPT", mirror.DownloadUrl, progressStyle: ProgressStyle.Indeterminate);
+            SetStatus("Downloading", mirror.DownloadUrl, progressStyle: ProgressStyle.Indeterminate);
             
             _data.SPTZipInfo =
                 await DownloadCacheHelper.GetOrDownloadFileAsync("SPT", mirror.DownloadUrl, progress, mirror.Hash);
@@ -84,7 +93,7 @@ public class DownloadTask : InstallerTaskBase
             }
         }
         
-        return Result.FromError("Failed to download SPT");
+        return Result.FromError("Download failed");
     }
     
     public override async Task<IResult> TaskOperation()

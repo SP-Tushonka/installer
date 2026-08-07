@@ -15,7 +15,7 @@
         <Label Grid.Row="0" Grid.Column="0" Content="Install Folder Path" FontSize="20"/>
         <TextBox Grid.Row="1" Grid.Column="0"
                  TextChanged="TextBox_OnTextChanged"
-                 Watermark="Where we dropping?"
+                 PlaceholderText="Where we dropping?"
                  FontSize="16"
                  Text="{Binding SelectedPath}"
                  Classes.hasErrors="{Binding !ValidPath}"

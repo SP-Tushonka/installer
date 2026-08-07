@@ -34,8 +34,7 @@ public class MainWindowViewModel : ReactiveObject, IActivatableViewModel, IScree
         var uiCulture = CultureInfo.InstalledUICulture;
         
         Log.Information("System Language: {iso} - {name}", uiCulture.TwoLetterISOLanguageName, uiCulture.DisplayName);
-        
-        Router.Navigate.Execute(new InstallerUpdateViewModel(this, installPath));
+        Router.Navigate.Execute(new InstallerUpdateViewModel(this, installPath)).Subscribe();
     }
     
     public void CloseCommand()

@@ -5,7 +5,9 @@
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="SPTInstaller.CustomControls.TitleBar">
 
-    <Grid ColumnDefinitions="AUTO,*,AUTO,AUTO">
+    <!-- Transparent rather than unset: a null background is not hit-testable, so the drag never sees
+         the press. The Rectangle below still paints the visible colour. -->
+    <Grid ColumnDefinitions="AUTO,*,AUTO,AUTO" Background="Transparent">
 
         <Rectangle Grid.ColumnSpan="6" IsHitTestVisible="False"
                    Fill="{Binding Background, RelativeSource={

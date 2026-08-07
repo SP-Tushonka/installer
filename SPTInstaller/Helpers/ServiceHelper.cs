@@ -11,7 +11,7 @@ namespace SPTInstaller.Helpers;
 /// <remarks>Splat only recognizes the registered types and doesn't account for interfaces :(</remarks>
 internal static class ServiceHelper
 {
-    private static bool TryRegisterInstance<T, T2>(object[] parameters = null)
+    private static bool TryRegisterInstance<T, T2>(object[] parameters = null) where T : class
     {
         var instance = Activator.CreateInstance(typeof(T2), parameters);
         

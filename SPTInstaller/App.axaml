@@ -1,4 +1,4 @@
-﻿<Application xmlns="https://github.com/avaloniaui"
+<Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:SPTInstaller"
              x:Class="SPTInstaller.App"
@@ -30,6 +30,20 @@
         <SolidColorBrush x:Key="SPT_Brush_Yellow" Color="{StaticResource SPT_Yellow}" />
         <SolidColorBrush x:Key="SPT_Brush_DarkGrayBlue" Color="{StaticResource SPT_DarkGrayBlue}" />
         <SolidColorBrush x:Key="SPT_Brush_LightGrayBlue" Color="{StaticResource SPT_LightGrayBlue}" />
+
+        <!-- Fluent's light variant is requested but the app paints dark, so the dropdown's own brushes
+             have to be replaced or the popup renders light behind light text. -->
+        <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="{StaticResource SPT_DarkGray}" />
+        <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="{StaticResource SPT_LightGrayBlue}" />
+        <SolidColorBrush x:Key="ComboBoxDropDownForeground" Color="{StaticResource SPT_White}" />
+        <SolidColorBrush x:Key="ComboBoxBackground" Color="{StaticResource SPT_DarkGray}" />
+        <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="{StaticResource SPT_DarkGrayBlue}" />
+        <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="{StaticResource SPT_DarkGrayBlue}" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="{StaticResource SPT_LightGrayBlue}" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="{StaticResource SPT_DarkGrayBlue}" />
+        <SolidColorBrush x:Key="ComboBoxItemForeground" Color="{StaticResource SPT_White}" />
+        <SolidColorBrush x:Key="ComboBoxItemForegroundSelected" Color="{StaticResource SPT_White}" />
+        <SolidColorBrush x:Key="ComboBoxItemForegroundPointerOver" Color="{StaticResource SPT_White}" />
         <SolidColorBrush x:Key="SPT_Brush_Lighter" Color="Gainsboro" />
 
         <!-- Path Geometry -->

@@ -38,19 +38,19 @@ public static class ProcessHelper
         switch ((PatcherExitCode)process.ExitCode)
         {
             case PatcherExitCode.Success:
-                return Result.FromSuccess("Patcher Finished Successfully, extracting SPT");
+                return Result.FromSuccess("Patcher Finished Successfully, extracting release files");
             
             case PatcherExitCode.ProgramClosed:
                 return Result.FromError("Patcher was closed before completing!");
             
             case PatcherExitCode.EftExeNotFound:
-                return Result.FromError("EscapeFromTarkov.exe is missing from the install Path");
+                return Result.FromError("The game executable is missing from the install path");
             
             case PatcherExitCode.NoPatchFolder:
                 return Result.FromError("Patchers Folder called 'SPT_Patches' is missing");
             
             case PatcherExitCode.MissingFile:
-                return Result.FromError("Vital EFT files were not found. The installer is unable to continue. Please reinstall EFT and try again.");
+                return Result.FromError("Vital game files were not found. The installer is unable to continue. Please reinstall the game and try again.");
             
             case PatcherExitCode.PatchFailed:
                 return Result.FromError("A patch failed to apply");

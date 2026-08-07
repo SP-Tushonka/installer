@@ -40,7 +40,7 @@ public class NetFramework472PreCheck : PreCheckBase
             if (key == null)
             {
                 return PreCheckResult.FromError(
-                    "Could not find .Net Framework on system.\n\nThis is required to play SPT, but you can install it later and shouldn't affect the SPT install process.",
+                    "Could not find .Net Framework on system.\n\nThis is required to play, but you can install it later and it won't affect the install process.",
                     failedButtonText, failedButtonAction);
             }
             
@@ -57,7 +57,7 @@ public class NetFramework472PreCheck : PreCheckBase
             if (installedVersion < minRequiredVersion)
             {
                 return PreCheckResult.FromError(
-                    $".Net Framework {versionString} is installed, but {minRequiredVersion} or higher is required.\n\nYou can install it later and shouldn't affect the SPT install process.",
+                    $".Net Framework {versionString} is installed, but {minRequiredVersion} or higher is required.\n\nYou can install it later, it won't affect the install process.",
                     failedButtonText, failedButtonAction);
             }
             

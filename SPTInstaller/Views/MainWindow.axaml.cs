@@ -1,8 +1,9 @@
-using Avalonia.Controls;
+using ReactiveUI.Avalonia;
+using SPTInstaller.ViewModels;
 
 namespace SPTInstaller.Views;
 
-public partial class MainWindow : Window
+public partial class MainWindow : ReactiveWindow<MainWindowViewModel>
 {
     public MainWindow()
     {

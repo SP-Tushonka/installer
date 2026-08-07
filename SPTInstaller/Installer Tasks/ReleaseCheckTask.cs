@@ -2,9 +2,10 @@
 using SPTInstaller.Models;
 using System.Threading.Tasks;
 using SPTInstaller.Helpers;
-using Newtonsoft.Json;
+using System.Linq;
 using SPTInstaller.Models.Mirrors;
 using SPTInstaller.Models.ReleaseInfo;
+using System.Text.Json;
 
 namespace SPTInstaller.Installer_Tasks;
 
@@ -21,7 +22,7 @@ public class ReleaseCheckTask : InstallerTaskBase
     {
         try
         {
-            SetStatus("Checking SPT Releases", "", null, ProgressStyle.Indeterminate);
+            SetStatus("Checking releases", "", null, ProgressStyle.Indeterminate);
             
             var progress = new Progress<double>((d) => { SetStatus(null, null, (int)Math.Floor(d)); });
             
@@ -56,11 +57,20 @@ public class ReleaseCheckTask : InstallerTaskBase
                         return Result.FromError("Failed to download patch mirror data, try clicking the 'Whats this' button below followed by the 'Clear Metadata cache' button");
                     }
                     
-                    sptReleaseInfo =
-                        JsonConvert.DeserializeObject<ReleaseInfo>(File.ReadAllText(sptReleaseInfoFile.FullName));
+                    var releaseManifest =
+                        JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(sptReleaseInfoFile.FullName), JsonOptions.Default);
 
-                    patchMirrorInfo =
-                        JsonConvert.DeserializeObject<PatchInfo>(File.ReadAllText(sptPatchMirrorsFile.FullName));
+                    var patchManifest =
+                        JsonSerializer.Deserialize<PatchManifest>(File.ReadAllText(sptPatchMirrorsFile.FullName), JsonOptions.Default);
+
+                    // Nothing chosen yet means the first published release, which is the newest.
+                    sptReleaseInfo = _data.SelectedChannel?.Release ?? releaseManifest?.Releases?.FirstOrDefault();
+
+                    // The patch is the one that lands on the release's client, not whatever was published last.
+                    patchMirrorInfo = patchManifest?.Patches?.FirstOrDefault(patch =>
+                        sptReleaseInfo != null
+                        && int.TryParse(sptReleaseInfo.ClientVersion, out var releaseClient)
+                        && patch.TargetClientVersion == releaseClient);
 
                     break;
                 }
@@ -75,7 +85,7 @@ public class ReleaseCheckTask : InstallerTaskBase
                     }
                     
                     return Result.FromError(
-                        $"An error occurred while deserializing SPT or patch data.\n\nMost likely we are uploading a new patch.\nPlease wait and try again in an hour\n\nERROR: {ex.Message}");
+                        $"An error occurred while deserializing release or patch data.\n\nMost likely we are uploading a new patch.\nPlease wait and try again in an hour\n\nERROR: {ex.Message}");
                 }
             }
 
@@ -96,7 +106,7 @@ public class ReleaseCheckTask : InstallerTaskBase
             
             if (intGameVersion < intSPTVersion)
             {
-                return Result.FromError("Your live EFT is out of date. Please update it using the Battlestate Games Launcher and try runing the SPT Installer again");
+                return Result.FromError("Your live game is out of date. Please update it using the game's launcher and try running the installer again");
             }
             
             if (intGameVersion == intSPTVersion)
@@ -129,16 +139,16 @@ public class ReleaseCheckTask : InstallerTaskBase
             if (sptClientIsOutdated)
             {
                 return Result.FromError(
-                    "EFT has updated. The patcher needs to be updated by SPT devs before you can install SPT." +
+                    "The game has updated. The patcher needs to be updated before you can install." +
                     "\n* There is no time frame provided as to when this will occur. It usually happens within 24 hours." +
                     "\n* The installer will automatically use it when the patcher gets updated." +
-                    "\n* This does not mean SPT is being updated to a new version." +
-                    "\n* The patcher is only for turning EFT files into an older version for SPT to use.");
+                    "\n* This does not mean a new version is being released." +
+                    "\n* The patcher is only for turning game files into the older version this install needs.");
             }
 
             if (liveClientIsOutdated)
             {
-                return Result.FromError("Your live EFT is out of date. Please update it using your Battlestate Games Launcher or Steam, then run the SPT Installer again.");
+                return Result.FromError("Your live game is out of date. Please update it using the game's launcher or Steam, then run the installer again.");
             }
             
             _data.PatchNeeded = patchNeedCheck;

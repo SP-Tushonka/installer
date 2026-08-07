@@ -35,7 +35,7 @@ public class ViewModelBase : ReactiveObject, IActivatableViewModel, IRoutableVie
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
-            HostScreen.Router.Navigate.Execute(await ViewModel.WithDelay(Milliseconds));
+            HostScreen.Router.Navigate.Execute(await ViewModel.WithDelay(Milliseconds)).Subscribe();
         });
     }
     
@@ -45,12 +45,12 @@ public class ViewModelBase : ReactiveObject, IActivatableViewModel, IRoutableVie
     /// <param name="ViewModel"></param>
     public void NavigateTo(ViewModelBase ViewModel)
     {
-        Dispatcher.UIThread.InvokeAsync(() => { HostScreen.Router.Navigate.Execute(ViewModel); });
+        Dispatcher.UIThread.InvokeAsync(() => { HostScreen.Router.Navigate.Execute(ViewModel).Subscribe(); });
     }
     
     public void NavigateBack()
     {
-        Dispatcher.UIThread.InvokeAsync(() => { HostScreen.Router.NavigateBack.Execute(); });
+        Dispatcher.UIThread.InvokeAsync(() => { HostScreen.Router.NavigateBack.Execute().Subscribe(); });
     }
     
     public ViewModelBase(IScreen Host)

@@ -78,7 +78,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
                 {
                     AllowMultiple = false,
                     SuggestedStartLocation = suggestedFolder, 
-                    Title = "Select a folder to install SPT into"
+                    Title = "Select a folder to install into"
                 });
             
             SelectedPath = selections.First().Path.LocalPath;
@@ -158,7 +158,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
         if (_data.OriginalGamePath == null)
         {
             NavigateTo(new MessageViewModel(HostScreen,
-                Result.FromError("Could not find where you installed EFT.\n\nDo you own and have the game installed?")));
+                Result.FromError("Could not find where you installed the game.\n\nDo you own and have the game installed?")));
             return;
         }
 #endif

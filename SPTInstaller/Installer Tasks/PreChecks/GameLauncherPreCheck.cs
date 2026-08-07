@@ -5,9 +5,9 @@ using SPTInstaller.Models;
 
 namespace SPTInstaller.Installer_Tasks.PreChecks;
 
-public class EftLauncherPreCheck : PreCheckBase
+public class GameLauncherPreCheck : PreCheckBase
 {
-    public EftLauncherPreCheck() : base("EFT Launcher Closed", true)
+    public GameLauncherPreCheck() : base("Game Launcher Closed", true)
     {
     }
     
@@ -16,9 +16,9 @@ public class EftLauncherPreCheck : PreCheckBase
         var eftLauncherProcs = Process.GetProcessesByName("BsgLauncher");
         
         return eftLauncherProcs.Length == 0
-            ? PreCheckResult.FromSuccess("Eft launcher is closed")
-            : PreCheckResult.FromError("Your Battlestate Games Launcher is open. Please close it to continue installing SPT",
-                "Kill EFT Launcher Processes",
+            ? PreCheckResult.FromSuccess("The game's launcher is closed")
+            : PreCheckResult.FromError("Your game's launcher is open, please close it",
+                "Kill game launcher processes",
                 () =>
                 {
                     var bsgLauncherProcs = Process.GetProcessesByName("BsgLauncher");

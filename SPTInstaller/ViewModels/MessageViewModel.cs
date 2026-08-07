@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Avalonia;
 using ReactiveUI;
@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using SPTInstaller.Models;
 
@@ -93,8 +94,6 @@ public class MessageViewModel : ViewModelBase
                     return;
                 }
                 
-                var dataObject = new DataObject();
-
                 var filesToCopy = new List<IStorageFile>();
                 
                 var logFile = await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(data.DebugMode ? App.LogDebugPath : App.LogPath);
@@ -113,9 +112,7 @@ public class MessageViewModel : ViewModelBase
                     filesToCopy.Add(patcherLogFile);
                 }
                 
-                dataObject.Set(DataFormats.Files, filesToCopy.ToArray());
-                
-                await desktop.MainWindow.Clipboard.SetDataObjectAsync(dataObject);
+                await desktop.MainWindow.Clipboard.SetFilesAsync(filesToCopy);
                 ClipCommandText = "Copied!";
             }
             catch (Exception ex)
@@ -167,7 +164,7 @@ public class MessageViewModel : ViewModelBase
                     if (AddShortcuts)
                     {
                         Log.Information("Running add shortcuts script ...");
-                        var sptPath = $"{Path.Join(data.TargetInstallPath, "SPT_Runtime")}";
+                        var sptPath = $"{Path.Join(data.TargetInstallPath, data.ReleaseInfo?.RuntimeFolderName ?? "SPT_Runtime")}";
                         var shortcutResult = ProcessHelper.RunEmbeddedScript("desktop_shortcuts.ps1", sptPath);
                         if (!shortcutResult.Succeeded)
                         {

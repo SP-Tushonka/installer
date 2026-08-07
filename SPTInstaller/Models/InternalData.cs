@@ -1,4 +1,4 @@
-﻿using SPTInstaller.Models.Mirrors;
+using SPTInstaller.Models.Mirrors;
 using SPTInstaller.Models.ReleaseInfo;
 
 namespace SPTInstaller.Models;
@@ -37,6 +37,11 @@ public class InternalData
     public ReleaseInfo.ReleaseInfo ReleaseInfo { get; set; }
     
     public PatchInfo PatchInfo { get; set; }
+
+    /// <summary>
+    /// Which published release the user picked, and whether to prefer the main download or the mirror.
+    /// </summary>
+    public InstallChannel SelectedChannel { get; set; }
     
     /// <summary>
     /// The release download link for the patcher mirror list

@@ -15,7 +15,7 @@ The installer cache is used to ensure you don't re-download large files that you
  <Span Foreground="red">You should only delete the cache folder if</Span>
     - You are low on space
     or
-    - You are not planning on installing SPT again any time soon
+    - You are not planning on installing again any time soon
 If possible, you should leave the cache in place to avoid uneccessary, lengthy downloads.
 It also helps us prevent extra traffic to our limited download mirrors. Every bit helps <Span Foreground="red"
                 FontSize="25">♥️</Span>

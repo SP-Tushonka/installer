@@ -1,10 +1,13 @@
-﻿using System.Collections.ObjectModel;
+﻿using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Threading;
 using DialogHostAvalonia;
-using Newtonsoft.Json;
 using ReactiveUI;
 using Serilog;
 using SPTInstaller.Controllers;
@@ -13,6 +16,7 @@ using SPTInstaller.CustomControls.Dialogs;
 using SPTInstaller.Helpers;
 using SPTInstaller.Models;
 using SPTInstaller.Models.ReleaseInfo;
+using System.Text.Json;
 
 namespace SPTInstaller.ViewModels;
 
@@ -28,6 +32,53 @@ public class PreChecksViewModel : ViewModelBase
     
     public ObservableCollection<PreCheckBase> PreChecks { get; set; } = new(ServiceHelper.GetAll<PreCheckBase>());
     
+    public ObservableCollection<InstallChannel> Channels { get; } = new();
+
+    private InstallChannel _selectedChannel;
+
+    public InstallChannel SelectedChannel
+    {
+        get => _selectedChannel;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _selectedChannel, value);
+
+            var data = ServiceHelper.Get<InternalData?>();
+
+            if (data != null)
+            {
+                data.SelectedChannel = value;
+            }
+
+            if (value?.Release != null)
+            {
+                InstallButtonText = $"Start Install: v{value.Release.SPTVersion}";
+            }
+
+            // Requirements are per release, so the checks have to be evaluated again for the new one.
+            var installer = ServiceHelper.Get<InstallController?>();
+
+            if (installer != null && value != null)
+            {
+                Task.Run(async () =>
+                {
+                    var result = await installer.RunPreChecks();
+                    AllowInstall = result.Succeeded;
+                });
+            }
+        }
+    }
+
+    private ReleaseInfo _installButtonRelease;
+
+    private bool _showChannels;
+
+    public bool ShowChannels
+    {
+        get => _showChannels;
+        set => this.RaiseAndSetIfChanged(ref _showChannels, value);
+    }
+
     public ICommand SelectPreCheckCommand { get; set; }
     public ICommand StartInstallCommand { get; set; }
     
@@ -97,6 +148,63 @@ public class PreChecksViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _installButtonCheckState, value);
     }
     
+    /// <summary>
+    /// Every published release crossed with its mirrors, so a new release or mirror shows up without an
+    /// installer change. The first mirror of the newest release is preselected.
+    /// </summary>
+    private async Task LoadChannelsAsync()
+    {
+        try
+        {
+            var releaseFile = await DownloadCacheHelper.GetOrDownloadFileAsync("release.json",
+                DownloadCacheHelper.ReleaseMirrorUrl, null, DownloadCacheHelper.SuggestedTtl);
+
+            if (releaseFile == null)
+            {
+                Log.Warning("Could not fetch release info for the version list, falling back to the newest release");
+                return;
+            }
+
+            var manifest = JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(releaseFile.FullName), JsonOptions.Default);
+
+            if (manifest?.Releases == null || manifest.Releases.Count == 0)
+            {
+                Log.Warning("No releases were published, falling back to the newest release");
+                return;
+            }
+
+            var channels = new List<InstallChannel>();
+
+            foreach (var release in manifest.Releases)
+            {
+                for (int i = 0; i < (release.Mirrors?.Count ?? 0); i++)
+                {
+                    channels.Add(new InstallChannel
+                    {
+                        Release = release,
+                        MirrorIndex = i,
+                        MirrorName = release.Mirrors[i].Name,
+                    });
+                }
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                foreach (var channel in channels)
+                {
+                    Channels.Add(channel);
+                }
+
+                SelectedChannel = Channels.FirstOrDefault();
+                ShowChannels = Channels.Count > 1;
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Could not build the version list, falling back to the newest release");
+        }
+    }
+
     private void ReCheckRequested(object? sender, EventArgs e)
     {
         Task.Run(async () =>
@@ -131,6 +239,10 @@ public class PreChecksViewModel : ViewModelBase
         InstallPath = data.TargetInstallPath;
         
         Log.Information($"Install Path: {FileHelper.GetRedactedPath(InstallPath)}");
+
+        // Fetched here so the choice exists before any task runs. ReleaseCheckTask reads the same
+        // cached file, so this costs one request rather than two.
+        Task.Run(LoadChannelsAsync);
         
         if (data.OriginalGamePath == data.TargetInstallPath)
         {
@@ -152,7 +264,7 @@ public class PreChecksViewModel : ViewModelBase
             
             NavigateTo(new MessageViewModel(HostScreen,
                 Result.FromError(
-                    "You have chosen to install in the same folder as EFT. Please choose a another folder. Refer to the install guide on where best to place the installer before running it."),
+                    "You have chosen to install in the same folder as the game. Please choose another folder. Refer to the install guide on where best to place the installer before running it."),
                 noLog: true));
             return;
         }
@@ -170,7 +282,7 @@ public class PreChecksViewModel : ViewModelBase
                             Log.Warning("Problem path detected, confirming install path ...");
                             var confirmation = await DialogHost.Show(new ConfirmationDialog(
                                 $"It appears you are installing into a folder known to cause problems: {failedCheck.Target}." +
-                                $"\nPlease consider installing SPT somewhere else to avoid issues later on." +
+                                $"\nPlease consider installing somewhere else to avoid issues later on." +
                                 $"\n\nAre you sure you want to install to this path?\n{InstallPath}"));
                             
                             if (confirmation == null || !bool.TryParse(confirmation.ToString(), out var confirm) ||
@@ -260,13 +372,16 @@ public class PreChecksViewModel : ViewModelBase
             
                     if (sptReleaseInfoFile == null)
                     {
-                        InstallButtonText = "Could not get SPT release metadata";
+                        InstallButtonText = "Could not get release metadata";
                         InstallButtonCheckState = StatusSpinner.SpinnerState.Error;
                         return;
                     }
                     
-                    sptReleaseInfo =
-                        JsonConvert.DeserializeObject<ReleaseInfo>(File.ReadAllText(sptReleaseInfoFile.FullName));
+                    var manifest =
+                        JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(sptReleaseInfoFile.FullName), JsonOptions.Default);
+
+                    // The button names whatever the user picked, falling back to the newest published.
+                    sptReleaseInfo = SelectedChannel?.Release ?? manifest?.Releases?.FirstOrDefault();
                 }
                 catch (Exception)
                 {
@@ -276,12 +391,13 @@ public class PreChecksViewModel : ViewModelBase
 
             if (sptReleaseInfo == null)
             {
-                InstallButtonText = "Could not parse latest SPT release";
+                InstallButtonText = "Could not parse latest release";
                 InstallButtonCheckState = StatusSpinner.SpinnerState.Error;
                 return;
             }
             
-            InstallButtonText = $"Start Install: SPT v{sptReleaseInfo.SPTVersion}";
+            InstallButtonText = $"Start Install: v{sptReleaseInfo.SPTVersion}";
+            _installButtonRelease = sptReleaseInfo;
             InstallButtonCheckState = StatusSpinner.SpinnerState.OK;
             
             AllowDetailsButton = true;

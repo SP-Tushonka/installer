@@ -3,7 +3,7 @@ using Serilog;
 using SPTInstaller.Helpers;
 using System.Diagnostics;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+using System.Text.Json;
 
 namespace SPTInstaller.Models;
 
@@ -152,7 +152,7 @@ public class InstallerUpdateInfo : ReactiveObject
             }
             
             var installerInfo =
-                JsonConvert.DeserializeObject<InstallerInfo>(File.ReadAllText(installerInfoFile.FullName));
+                JsonSerializer.Deserialize<InstallerInfo>(File.ReadAllText(installerInfoFile.FullName), JsonOptions.Default);
             
             if (installerInfo == null)
             {

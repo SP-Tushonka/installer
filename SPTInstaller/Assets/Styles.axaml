@@ -92,6 +92,39 @@
         <Setter Property="Foreground" Value="OrangeRed" />
     </Style>
 
+    <!-- ComboBox Styles -->
+    <Style Selector="ComboBox">
+        <Setter Property="Foreground" Value="{StaticResource SPT_Foreground_Light}" />
+        <Setter Property="Background" Value="{StaticResource SPT_Background_Dark}" />
+    </Style>
+
+    <Style Selector="ComboBox /template/ ContentControl#ContentPresenter">
+        <Setter Property="Foreground" Value="{StaticResource SPT_Foreground_Light}" />
+    </Style>
+
+    <Style Selector="ComboBox /template/ Border#PopupBorder">
+        <Setter Property="Background" Value="{StaticResource SPT_Background_Dark}" />
+        <Setter Property="BorderBrush" Value="{StaticResource SPT_Brush_LightGrayBlue}" />
+    </Style>
+
+    <Style Selector="ComboBox /template/ Border#Background">
+        <Setter Property="Background" Value="{StaticResource SPT_Background_Dark}" />
+    </Style>
+
+    <Style Selector="ComboBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource SPT_Foreground_Light}" />
+    </Style>
+
+    <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter">
+        <Setter Property="Foreground" Value="{StaticResource SPT_Foreground_Light}" />
+        <Setter Property="Background" Value="{StaticResource SPT_Brush_DarkGrayBlue}" />
+    </Style>
+
+    <Style Selector="ComboBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Foreground" Value="{StaticResource SPT_Foreground_Light}" />
+        <Setter Property="Background" Value="{StaticResource SPT_Brush_LightGrayBlue}" />
+    </Style>
+
     <!-- ProgressBar Styles -->
     <!-- SourceRef: https://github.com/AvaloniaUI/Avalonia/blob/master/src/Avalonia.Themes.Fluent/Controls/ProgressBar.xaml -->
     <Style Selector="ProgressBar">

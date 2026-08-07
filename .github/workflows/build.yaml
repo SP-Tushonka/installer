@@ -2,8 +2,16 @@ name: SPT installer build
 
 on:
   push:
+    branches:
+      - master
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - master
+
+env:
+  DOTNET_VERSION: 10.0.x
 
 jobs:
   build:
@@ -15,15 +23,103 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Publish
-        run: dotnet publish -c Release -f net8.0 -r win-x64 -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishSingleFile=true -p:PublishReadyToRun=true --self-contained true -o ./publish
+      - name: Build
+        run: dotnet build -c Release --no-incremental --no-restore
 
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+(\.[0-9]+){1,3}$'; then
+            echo "Tag $GITHUB_REF_NAME is not a version the assembly can carry" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        run: |
+          dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r win-x64 \
+            -p:PublishSingleFile=true -p:PublishReadyToRun=true --self-contained true \
+            -p:AssemblyVersion=${{ steps.version.outputs.version }} \
+            -p:FileVersion=${{ steps.version.outputs.version }} \
+            -p:InformationalVersion=${{ steps.version.outputs.version }} \
+            -o ./publish
+
+      - name: Collect release notes
+        run: |
+          git fetch --force --tags origin
+
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME" 2>/dev/null)" = "tag" ]; then
+            git for-each-ref "refs/tags/$GITHUB_REF_NAME" --format='%(contents)' \
+              | sed '/^-----BEGIN PGP SIGNATURE-----$/,$d' > "$RUNNER_TEMP/notes.txt"
+          fi
+
+          if [ ! -s "$RUNNER_TEMP/notes.txt" ]; then
+            previous_tag=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+            git log --no-merges --pretty=format:%s "${previous_tag:+$previous_tag..}${GITHUB_REF_NAME}" > "$RUNNER_TEMP/notes.txt"
+          fi
+
+          sed -i -e 's/^[-*][[:space:]]*//' -e '/^[[:space:]]*$/d' "$RUNNER_TEMP/notes.txt"
+          cat "$RUNNER_TEMP/notes.txt"
+
+      - name: Write installer manifest
+        run: |
+          jq -R . "$RUNNER_TEMP/notes.txt" \
+            | jq -s --arg version "${{ steps.version.outputs.version }}" \
+                '{ LatestVersion: $version, Changes: . }' > ./publish/installer.json
+
+          cat ./publish/installer.json
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          aws s3 cp ./publish/SPTInstaller.exe "s3://${{ secrets.R2_BUCKET }}/SPTInstaller.exe" \
+            --endpoint-url "$ENDPOINT" \
+            --content-type application/octet-stream \
+            --cache-control "public, max-age=300"
+
+          # Short lived so a release is picked up promptly. The installer caches it for an hour locally anyway.
+          aws s3 cp ./publish/installer.json "s3://${{ secrets.R2_BUCKET }}/installer.json" \
+            --endpoint-url "$ENDPOINT" \
+            --content-type application/json \
+            --cache-control "public, max-age=300"
+            
       - name: Create Release
         env:
-          GITHUB_TOKEN: ${{ secrets.SPTBOT_PAT }}
-        run: gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --target ${{ github.sha }} ./publish/SPTInstaller.exe
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release edit "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt"
+            gh release upload "${{ github.ref_name }}" ./publish/SPTInstaller.exe --clobber
+          else
+            gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt" --target ${{ github.sha }} ./publish/SPTInstaller.exe
+          fi

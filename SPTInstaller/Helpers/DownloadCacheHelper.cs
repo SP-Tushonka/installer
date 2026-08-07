@@ -12,10 +12,14 @@ public static class DownloadCacheHelper
     public static string CachePath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "spt-installer/cache");
     
-    public static string ReleaseMirrorUrl = "https://spt-releases.modd.in/release.json";
-    public static string PatchMirrorUrl = "https://slugma.waffle-lord.net/mirrors.json";
-    public static string InstallerUrl = "https://ligma.waffle-lord.net/SPTInstaller.exe";
-    public static string InstallerInfoUrl = "https://ligma.waffle-lord.net/installer.json";
+    // Overridable so a local manifest can be pointed at without a build change
+    public static string ReleaseMirrorUrl =
+        Environment.GetEnvironmentVariable("SPT_RELEASE_URL") ?? "https://patcher.sp-tushonka.com/release.json";
+
+    public static string PatchMirrorUrl =
+        Environment.GetEnvironmentVariable("SPT_MIRRORS_URL") ?? "https://patcher.sp-tushonka.com/mirrors.json";
+    public static string InstallerUrl = "https://patcher.sp-tushonka.com/SPTInstaller.exe";
+    public static string InstallerInfoUrl = "https://patcher.sp-tushonka.com/installer.json";
     
     public static string GetCacheSizeText()
     {

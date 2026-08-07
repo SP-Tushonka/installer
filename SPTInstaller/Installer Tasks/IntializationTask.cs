@@ -16,7 +16,7 @@ public class InitializationTask : InstallerTaskBase
     
     public override async Task<IResult> TaskOperation()
     {
-        SetStatus("Initializing", $"Installed EFT Game Path: {FileHelper.GetRedactedPath(_data.OriginalGamePath)}");
+        SetStatus("Initializing", $"Installed Game Path: {FileHelper.GetRedactedPath(_data.OriginalGamePath)}");
         
         var result = PreCheckHelper.DetectOriginalGameVersion(_data.OriginalGamePath);
         
@@ -27,18 +27,18 @@ public class InitializationTask : InstallerTaskBase
         
         _data.OriginalGameVersion = result.Message;
         
-        SetStatus(null, $"Installed EFT Game Version: {_data.OriginalGameVersion}");
+        SetStatus(null, $"Installed Game Version: {_data.OriginalGameVersion}");
         
         if (_data.OriginalGamePath == null)
         {
             return Result.FromError(
-                "Unable to find original EFT directory, please make sure EFT is installed. Please also run EFT once");
+                "Unable to find the original game directory, please make sure the game is installed. Please also run the game once");
         }
         
         if (File.Exists(Path.Join(_data.TargetInstallPath, "EscapeFromTarkov.exe")))
         {
             return Result.FromError(
-                "Install location is a folder that has existing game files. Please make sure the folder doesn't contain an existing SPT install");
+                "Install location is a folder that has existing game files. Please make sure the folder doesn't contain an existing install");
         }
         
         return Result.FromSuccess($"Current Game Version: {_data.OriginalGameVersion}");
