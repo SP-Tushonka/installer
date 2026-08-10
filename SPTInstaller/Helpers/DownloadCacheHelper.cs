@@ -8,6 +8,8 @@ public static class DownloadCacheHelper
 {
     private static HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(15) };
 
+    private const string VersionMarkerFileName = ".installer-version";
+
     public static TimeSpan SuggestedTtl = TimeSpan.FromHours(1);
     public static string CachePath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "spt-installer/cache");
@@ -47,9 +49,37 @@ public static class DownloadCacheHelper
         return DirectorySizeHelper.SizeSuffix(cacheSize);
     }
 
+    public static void ClearMetadataCacheOnVersionChange(string version)
+    {
+        try
+        {
+            Directory.CreateDirectory(CachePath);
+
+            var marker = new FileInfo(Path.Join(CachePath, VersionMarkerFileName));
+
+            if (marker.Exists && File.ReadAllText(marker.FullName).Trim() == version)
+            {
+                return;
+            }
+
+            Log.Information("Cached metadata was written by a different installer version, clearing it");
+
+            ClearMetadataCache();
+            File.WriteAllText(marker.FullName, version);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Could not reconcile the metadata cache with the installer version");
+        }
+    }
 
     public static bool ClearMetadataCache()
     {
+        if (!Directory.Exists(CachePath))
+        {
+            return true;
+        }
+
         var metaData = new DirectoryInfo(CachePath).GetFiles("*.json", SearchOption.TopDirectoryOnly);
         var allDeleted = true;
 

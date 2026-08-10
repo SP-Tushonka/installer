@@ -46,6 +46,9 @@ public partial class App : Application
             .File(path: LogPath,
                 restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information)
             .CreateLogger();
+
+        DownloadCacheHelper.ClearMetadataCacheOnVersionChange(
+            System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown");
     }
     
     public override void OnFrameworkInitializationCompleted()
