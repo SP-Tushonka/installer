@@ -6,7 +6,12 @@ namespace SPTInstaller.Helpers;
 
 public static class DownloadCacheHelper
 {
-    private static HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(15) };
+    private static readonly HttpClient _httpClient = CreateClient(useProxy: true);
+
+    private static readonly HttpClient _directHttpClient = CreateClient(useProxy: false);
+
+    private static HttpClient CreateClient(bool useProxy) =>
+        new(new SocketsHttpHandler { UseProxy = useProxy }) { Timeout = TimeSpan.FromMinutes(15) };
 
     private const string VersionMarkerFileName = ".installer-version";
 
@@ -70,6 +75,34 @@ public static class DownloadCacheHelper
         catch (Exception ex)
         {
             Log.Warning(ex, "Could not reconcile the metadata cache with the installer version");
+        }
+    }
+
+    /// <summary>
+    /// Removes scratch files left behind by downloads that were killed mid-flight
+    /// </summary>
+    public static void ClearPartialDownloads()
+    {
+        if (!Directory.Exists(CachePath))
+        {
+            return;
+        }
+
+        foreach (var file in new DirectoryInfo(CachePath).GetFiles("*.tmp", SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                var size = file.Length;
+
+                file.Delete();
+
+                Log.Information("Removed partial download: {name} ({size})", file.Name,
+                    DirectorySizeHelper.SizeSuffix(size));
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Could not remove partial download: {name}", file.Name);
+            }
         }
     }
 
@@ -185,92 +218,81 @@ public static class DownloadCacheHelper
     /// <param name="targetLink">The url to download the file from</param>
     /// <param name="progress">A provider for progress updates</param>
     /// <returns>A <see cref="FileInfo"/> object of the cached file</returns>
-    /// <remarks>If the file exists, it is deleted before downloading</remarks>
-    public static async Task<FileInfo?> DownloadFileAsync(string outputFileName, string targetLink,
-        IProgress<double> progress)
+    /// <remarks>The cached file is only replaced once the download completes, so a failure leaves it intact</remarks>
+    public static async Task<FileInfo?> DownloadFileAsync(string outputFileName, string targetLink, IProgress<double> progress)
     {
         Directory.CreateDirectory(CachePath);
+
         var outputFile = new FileInfo(Path.Join(CachePath, outputFileName));
-        
+
+        var tempFile = new FileInfo($"{outputFile.FullName}.{Guid.NewGuid():N}.tmp");
+
+        var clients = new[] { _httpClient, _directHttpClient };
+
         try
         {
-            if (outputFile.Exists)
-                outputFile.Delete();
-            
-            // Use the provided extension method
-            using (var file = new FileStream(outputFile.FullName, FileMode.Create, FileAccess.Write, FileShare.None))
+            for (var attempt = 0; attempt < clients.Length; attempt++)
             {
-                if (!await _httpClient.DownloadDataAsync(targetLink, file, progress))
+                var viaProxy = attempt == 0;
+
+                try
                 {
-                    Log.Error($"Download failed: {targetLink}");
-                    
-                    outputFile.Refresh();
-                    
-                    if (outputFile.Exists)
+                    using (var file = tempFile.Open(FileMode.Create, FileAccess.Write, FileShare.None))
                     {
-                        outputFile.Delete();
+                        if (!await clients[attempt].DownloadDataAsync(targetLink, file, progress))
+                        {
+                            Log.Error("Download incomplete ({mode}): {url}",
+                                viaProxy ? "system proxy" : "proxy bypassed", targetLink);
+                            continue;
+                        }
+                    }
+
+                    File.Move(tempFile.FullName, outputFile.FullName, true);
+                    outputFile.Refresh();
+
+                    if (!outputFile.Exists)
+                    {
+                        Log.Error("Failed to download file from url: {name} :: {url}", outputFileName, targetLink);
                         return null;
                     }
+
+                    return outputFile;
+                }
+                catch (Exception ex) when (attempt < clients.Length - 1 && IsTransportFailure(ex))
+                {
+                    Log.Warning(ex, "Download failed through the system proxy, retrying without it: {url}", targetLink);
                 }
             }
-            
-            outputFile.Refresh();
-            
-            if (!outputFile.Exists)
-            {
-                Log.Error("Failed to download file from url: {name} :: {url}", outputFileName, targetLink);
-                return null;
-            }
-            
-            return outputFile;
+
+            Log.Error("Failed to download file from url: {name} :: {url}", outputFileName, targetLink);
+            return null;
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to download file from url: {name} :: {url}", outputFileName, targetLink);
             return null;
         }
-    }
-    
-    /// <summary>
-    /// Download a file to the cache folder
-    /// </summary>
-    /// <param name="outputFileName">The file name to save the file as</param>
-    /// <param name="downloadStream">The stream the download the file from</param>
-    /// <returns>A <see cref="FileInfo"/> object of the cached file</returns>
-    /// <remarks>If the file exists, it is deleted before downloading</remarks>
-    public static async Task<FileInfo?> DownloadFileAsync(string outputFileName, Stream downloadStream)
-    {
-        Directory.CreateDirectory(CachePath);
-        var outputFile = new FileInfo(Path.Join(CachePath, outputFileName));
-        
-        try
+        finally
         {
-            if (outputFile.Exists)
-                outputFile.Delete();
-            
-            using var patcherFileStream = outputFile.Open(FileMode.Create);
+            try
             {
-                await downloadStream.CopyToAsync(patcherFileStream);
+                tempFile.Refresh();
+
+                if (tempFile.Exists)
+                {
+                    tempFile.Delete();
+                }
             }
-            
-            patcherFileStream.Close();
-            
-            outputFile.Refresh();
-            
-            if (!outputFile.Exists)
+            catch (Exception ex)
             {
-                Log.Error("Failed to download file from stream: {name}", outputFileName);
-                return null;
+                Log.Warning(ex, "Could not clean up partial download: {name}", tempFile.Name);
             }
-            
-            return outputFile;
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Failed to download file from stream: {fileName}", outputFileName);
-            return null;
         }
     }
+
+    // Only the HTTP stack's own failures are worth a proxy-less retry; a local file error is not
+    private static bool IsTransportFailure(Exception exception)
+        => exception is HttpRequestException or TaskCanceledException;
 
     /// <summary>
     /// Get or download a file using a time to live
@@ -319,31 +341,6 @@ public static class DownloadCacheHelper
             
             Log.Information($"Downloading File: {targetLink}");
             return await DownloadFileAsync(fileName, targetLink, progress);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, $"Error while getting file: {fileName}");
-            return null;
-        }
-    }
-    
-    /// <summary>
-    /// Get the file from cache or download it
-    /// </summary>
-    /// <param name="fileName">The name of the file to check for in the cache</param>
-    /// <param name="fileDownloadStream">The stream to download from if the file doesn't exist in the cache</param>
-    /// <param name="expectedHash">The expected hash of the cached file</param>
-    /// <returns>A <see cref="FileInfo"/> object of the cached file</returns>
-    /// <remarks>Use <see cref="DownloadFileAsync(string, Stream)"/> if you don't have an expected cache file hash</remarks>
-    public static async Task<FileInfo?> GetOrDownloadFileAsync(string fileName, Stream fileDownloadStream,
-        string expectedHash)
-    {
-        try
-        {
-            if (CheckCacheHash(fileName, expectedHash, out var cacheFile))
-                return cacheFile;
-            
-            return await DownloadFileAsync(fileName, fileDownloadStream);
         }
         catch (Exception ex)
         {

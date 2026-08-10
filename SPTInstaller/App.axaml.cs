@@ -49,6 +49,8 @@ public partial class App : Application
 
         DownloadCacheHelper.ClearMetadataCacheOnVersionChange(
             System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown");
+
+        DownloadCacheHelper.ClearPartialDownloads();
     }
     
     public override void OnFrameworkInitializationCompleted()
