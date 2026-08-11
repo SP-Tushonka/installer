@@ -179,6 +179,13 @@ public class InstallerUpdateInfo : ReactiveObject
             
             return;
         }
+        catch (JsonException ex)
+        {
+            DownloadCacheHelper.ClearMetadataCache();
+
+            EndCheck("Could not read the installer info, it will be fetched again next launch", false, false);
+            Log.Error(ex, "Discarded unreadable installer info");
+        }
         catch (Exception ex)
         {
             EndCheck(ex.Message, false, false);

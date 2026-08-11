@@ -198,6 +198,14 @@ public static class DownloadCacheHelper
                 return false;
             }
             
+            if (cacheFile.Length == 0)
+            {
+                Log.Warning($"{cacheFile.Name} is empty, discarding it");
+                cacheFile.Delete();
+
+                return false;
+            }
+
             var validTimeToLive = cacheFile.LastWriteTime.Add(ttl) > DateTime.Now;
 
             Log.Information($"{cacheFile.Name} TTL is {(validTimeToLive ? "OK" : "INVALID")}");
