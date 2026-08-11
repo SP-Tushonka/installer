@@ -47,7 +47,7 @@ public partial class App : Application
                 restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information)
             .CreateLogger();
 
-        DownloadCacheHelper.ClearMetadataCacheOnVersionChange(
+        DownloadCacheHelper.ClearCacheOnVersionChange(
             System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown");
 
         DownloadCacheHelper.ClearPartialDownloads();

@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -44,27 +44,29 @@
                 </Button>
                 </Grid>
 
-                <ItemsControl ItemsSource="{Binding PreChecks}" Grid.Row="2" Grid.Column="3">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Spacing="5" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <cc:PreCheckItem PreCheckName="{Binding Name}"
-                                             IsRequired="{Binding IsRequired}"
-                                             IsSelected="{Binding IsSelected}"
-                                             State="{Binding State}"
-                                             SelectCommand="{Binding $parent[ItemsControl].DataContext.SelectPreCheckCommand}"
-                                             HorizontalAlignment="Stretch" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <ScrollViewer Grid.Row="2" Grid.RowSpan="2" Grid.Column="3" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding PreChecks}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="5" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <cc:PreCheckItem PreCheckName="{Binding Name}"
+                                                 IsRequired="{Binding IsRequired}"
+                                                 IsSelected="{Binding IsSelected}"
+                                                 State="{Binding State}"
+                                                 SelectCommand="{Binding $parent[ItemsControl].DataContext.SelectPreCheckCommand}"
+                                                 HorizontalAlignment="Stretch" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
 
                 <!-- cache info -->
-                <cc:CacheInfo Grid.Row="2" Grid.Column="3" Padding="10"
-                              VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                <cc:CacheInfo Grid.Row="3" Grid.Column="1" Padding="10"
+                              HorizontalAlignment="Left"
                               InfoText="{Binding CacheInfoText}" State="{Binding CacheCheckState}" />
 
             </Grid>

@@ -44,7 +44,8 @@ internal class Program
 #if !TEST
         ServiceHelper.Register<PreCheckBase, GameInstalledPreCheck>();
         ServiceHelper.Register<PreCheckBase, NetFramework472PreCheck>();
-        ServiceHelper.Register<PreCheckBase, DotnetRuntimePreCheck>();
+        ServiceHelper.Register<PreCheckBase, DesktopRuntimePreCheck>();
+        ServiceHelper.Register<PreCheckBase, AspNetCoreRuntimePreCheck>();
         ServiceHelper.Register<PreCheckBase, FreeSpacePreCheck>();
         ServiceHelper.Register<PreCheckBase, GameLauncherPreCheck>();
 

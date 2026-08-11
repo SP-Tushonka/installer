@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using Serilog;
 using System.Text;
 using System.Threading;
 using SPTInstaller.Models;
@@ -34,32 +35,31 @@ public static class ProcessHelper
         process.Start();
         
         process.WaitForExit();
-        
-        switch ((PatcherExitCode)process.ExitCode)
+
+        return (PatcherExitCode)process.ExitCode switch
         {
-            case PatcherExitCode.Success:
-                return Result.FromSuccess("Patcher Finished Successfully, extracting release files");
-            
-            case PatcherExitCode.ProgramClosed:
-                return Result.FromError("Patcher was closed before completing!");
-            
-            case PatcherExitCode.EftExeNotFound:
-                return Result.FromError("The game executable is missing from the install path");
-            
-            case PatcherExitCode.NoPatchFolder:
-                return Result.FromError("Patchers Folder called 'SPT_Patches' is missing");
-            
-            case PatcherExitCode.MissingFile:
-                return Result.FromError("Vital game files were not found. The installer is unable to continue. Please reinstall the game and try again.");
-            
-            case PatcherExitCode.PatchFailed:
-                return Result.FromError("A patch failed to apply");
-            
-            default:
-                return Result.FromError("An unknown error occurred in the patcher");
-        }
+            PatcherExitCode.Success => Result.FromSuccess("Patcher Finished Successfully, extracting release files"),
+            PatcherExitCode.ProgramClosed => Result.FromError("Patcher was closed before completing!"),
+            PatcherExitCode.EftExeNotFound => Result.FromError("The game executable is missing from the install path"),
+            PatcherExitCode.NoPatchFolder => Result.FromError("Patchers Folder called 'SPT_Patches' is missing"),
+            PatcherExitCode.MissingFile => Result.FromError("Vital game files were not found. The installer is unable to continue. Please reinstall the game and try again."),
+            PatcherExitCode.PatchFailed => Result.FromError("A patch failed to apply"),
+            _ => Result.FromError("An unknown error occurred in the patcher"),
+        };
     }
     
+    public static void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Could not open {url}", url);
+        }
+    }
+
     public static ReadProcessResult RunAndReadProcessOutputs(string fileName, string args, int timeout = 5000)
     {
         using var proc = new Process();
@@ -76,8 +76,8 @@ public static class ProcessHelper
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
         
-        using AutoResetEvent outputWaitHandle = new AutoResetEvent(false);
-        using AutoResetEvent errorWaitHandle = new AutoResetEvent(false);
+        using var outputWaitHandle = new AutoResetEvent(false);
+        using var errorWaitHandle = new AutoResetEvent(false);
         
         proc.OutputDataReceived += (s, e) =>
         {

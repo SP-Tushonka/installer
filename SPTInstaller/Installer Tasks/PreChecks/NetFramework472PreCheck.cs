@@ -1,5 +1,6 @@
 ﻿using Microsoft.Win32;
 using Serilog;
+using SPTInstaller.Helpers;
 using SPTInstaller.Models;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -22,20 +23,8 @@ public class NetFramework472PreCheck : PreCheckBase
             
             var failedButtonText = "Download .Net Framework 4.7.2";
             
-            var failedButtonAction = () =>
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "cmd.exe",
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    ArgumentList =
-                    {
-                        "/C", "start",
-                        "https://dotnet.microsoft.com/download/dotnet-framework/thank-you/net472-developer-pack-offline-installer"
-                    }
-                });
-            };
+            var failedButtonAction = () => ProcessHelper.OpenUrl(
+                "https://dotnet.microsoft.com/download/dotnet-framework/thank-you/net472-developer-pack-offline-installer");
             
             if (key == null)
             {

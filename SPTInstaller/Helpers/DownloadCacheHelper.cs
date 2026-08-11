@@ -54,7 +54,7 @@ public static class DownloadCacheHelper
         return DirectorySizeHelper.SizeSuffix(cacheSize);
     }
 
-    public static void ClearMetadataCacheOnVersionChange(string version)
+    public static void ClearCacheOnVersionChange(string version)
     {
         try
         {
@@ -67,14 +67,16 @@ public static class DownloadCacheHelper
                 return;
             }
 
-            Log.Information("Cached metadata was written by a different installer version, clearing it");
+            Log.Information("Cache was written by a different installer version, clearing it");
 
-            ClearMetadataCache();
-            File.WriteAllText(marker.FullName, version);
+            Directory.Delete(CachePath, true);
+            Directory.CreateDirectory(CachePath);
+
+            File.WriteAllText(Path.Join(CachePath, VersionMarkerFileName), version);
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "Could not reconcile the metadata cache with the installer version");
+            Log.Warning(ex, "Could not reconcile the cache with the installer version");
         }
     }
 

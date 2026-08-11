@@ -10,7 +10,7 @@
         x:Class="SPTInstaller.Views.MainWindow"
         Icon="/Assets/spt_installer.ico"
         Title="SPT Installer"
-        Height="450" Width="750"
+        Height="450" Width="800"
         WindowStartupLocation="CenterScreen"
         ExtendClientAreaToDecorationsHint="True"
         WindowDecorations="None"
