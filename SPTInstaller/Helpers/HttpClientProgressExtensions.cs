@@ -10,6 +10,8 @@ public static class HttpClientProgressExtensions
         IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         using var response = await client.GetAsync(requestUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
         var contentLength = response.Content.Headers.ContentLength;
         using var download = await response.Content.ReadAsStreamAsync(cancellationToken);
 

@@ -11,7 +11,7 @@ public class HttpMirrorDownloader : MirrorDownloaderBase
     
     public override async Task<FileInfo?> Download(IProgress<double> progress)
     {
-        var file = await DownloadCacheHelper.DownloadFileAsync("patcher", MirrorInfo.Link, progress);
+        var file = await DownloadCacheHelper.DownloadFileAsync("patcher", [MirrorInfo.Link], progress);
         
         if (file == null)
             return null;

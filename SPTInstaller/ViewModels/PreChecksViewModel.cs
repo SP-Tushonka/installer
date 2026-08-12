@@ -116,14 +116,6 @@ public class PreChecksViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _allowInstall, value);
     }
     
-    private bool _allowDetailsButton = false;
-    
-    public bool AllowDetailsButton
-    {
-        get => _allowDetailsButton;
-        set => this.RaiseAndSetIfChanged(ref _allowDetailsButton, value);
-    }
-    
     private string _cacheInfoText;
     
     public string CacheInfoText
@@ -157,7 +149,7 @@ public class PreChecksViewModel : ViewModelBase
         try
         {
             var releaseFile = await DownloadCacheHelper.GetOrDownloadFileAsync("release.json",
-                DownloadCacheHelper.ReleaseMirrorUrl, null, DownloadCacheHelper.SuggestedTtl);
+                DownloadCacheHelper.ReleaseUrls, null, DownloadCacheHelper.SuggestedTtl);
 
             if (releaseFile == null)
             {
@@ -187,6 +179,8 @@ public class PreChecksViewModel : ViewModelBase
                     });
                 }
             }
+
+            channels = await HostReachability.KeepReachableAsync(channels, channel => channel.Release.Mirrors[channel.MirrorIndex].DownloadUrl);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -367,7 +361,7 @@ public class PreChecksViewModel : ViewModelBase
                 try
                 {
                     var sptReleaseInfoFile =
-                        await DownloadCacheHelper.GetOrDownloadFileAsync("release.json", DownloadCacheHelper.ReleaseMirrorUrl,
+                        await DownloadCacheHelper.GetOrDownloadFileAsync("release.json", DownloadCacheHelper.ReleaseUrls,
                             progress, DownloadCacheHelper.SuggestedTtl);
             
                     if (sptReleaseInfoFile == null)
@@ -382,6 +376,11 @@ public class PreChecksViewModel : ViewModelBase
 
                     // The button names whatever the user picked, falling back to the newest published.
                     sptReleaseInfo = SelectedChannel?.Release ?? manifest?.Releases?.FirstOrDefault();
+
+                    if (sptReleaseInfo != null)
+                    {
+                        break;
+                    }
                 }
                 catch (Exception)
                 {
@@ -400,7 +399,6 @@ public class PreChecksViewModel : ViewModelBase
             _installButtonRelease = sptReleaseInfo;
             InstallButtonCheckState = StatusSpinner.SpinnerState.OK;
             
-            AllowDetailsButton = true;
             AllowInstall = result.Succeeded;
         });
         

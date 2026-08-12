@@ -33,13 +33,17 @@
                                    Fill="{Binding State, Converter={StaticResource colorConverter}}"
                                    HorizontalAlignment="Left" />
 
-                        <StackPanel Grid.Row="1" Grid.Column="2" HorizontalAlignment="Left">
-                            <Label Content="{Binding Name}"
-                                   FontSize="20" />
-                            <Rectangle Height="1" Fill="Gray" Margin="0 10" />
-                            <TextBlock Text="{Binding PreCheckDetails}"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
+                        <ScrollViewer Grid.Row="1" Grid.Column="2"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel HorizontalAlignment="Left">
+                                <Label Content="{Binding Name}"
+                                       FontSize="20" />
+                                <Rectangle Height="1" Fill="Gray" Margin="0 10" />
+                                <TextBlock Text="{Binding PreCheckDetails}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ScrollViewer>
 
                         <Button Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Classes="yellow"
                                 IsVisible="{Binding ActionButtonIsVisible}"

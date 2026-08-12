@@ -1,4 +1,5 @@
-﻿using System.Net.Http;
+﻿using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Serilog;
 
@@ -6,9 +7,9 @@ namespace SPTInstaller.Helpers;
 
 public static class DownloadCacheHelper
 {
-    private static readonly HttpClient _httpClient = CreateClient(useProxy: true);
+    internal static readonly HttpClient _httpClient = CreateClient(useProxy: true);
 
-    private static readonly HttpClient _directHttpClient = CreateClient(useProxy: false);
+    internal static readonly HttpClient _directHttpClient = CreateClient(useProxy: false);
 
     private static HttpClient CreateClient(bool useProxy) =>
         new(new SocketsHttpHandler { UseProxy = useProxy }) { Timeout = TimeSpan.FromMinutes(15) };
@@ -19,14 +20,23 @@ public static class DownloadCacheHelper
     public static string CachePath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "spt-installer/cache");
     
-    // Overridable so a local manifest can be pointed at without a build change
-    public static string ReleaseMirrorUrl =
-        Environment.GetEnvironmentVariable("SPT_RELEASE_URL") ?? "https://patcher.sp-tushonka.com/release.json";
+    private const string PrimaryHost = "https://patcher.sp-tushonka.com";
+    private const string FallbackHost = "https://mirror.sp-tushonka.com";
 
-    public static string PatchMirrorUrl =
-        Environment.GetEnvironmentVariable("SPT_MIRRORS_URL") ?? "https://patcher.sp-tushonka.com/mirrors.json";
-    public static string InstallerUrl = "https://patcher.sp-tushonka.com/SPTInstaller.exe";
-    public static string InstallerInfoUrl = "https://patcher.sp-tushonka.com/installer.json";
+    public static readonly string[] ReleaseUrls = Endpoints("release.json", "SPT_RELEASE_URL");
+    public static readonly string[] PatchManifestUrls = Endpoints("mirrors.json", "SPT_MIRRORS_URL");
+    public static readonly string[] InstallerUrls = Endpoints("SPTInstaller.exe");
+    public static readonly string[] InstallerInfoUrls = Endpoints("installer.json");
+
+    private static readonly Dictionary<string, Task<FileInfo?>> _inFlight = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string[] Endpoints(string fileName, string? overrideVariable = null)
+    {
+        var custom = overrideVariable is null ? null : Environment.GetEnvironmentVariable(overrideVariable);
+        return string.IsNullOrWhiteSpace(custom)
+            ? [$"{PrimaryHost}/{fileName}", $"{FallbackHost}/{fileName}"]
+            : [custom];
+    }
     
     public static string GetCacheSizeText()
     {
@@ -225,11 +235,46 @@ public static class DownloadCacheHelper
     /// Download a file to the cache folder
     /// </summary>
     /// <param name="outputFileName">The file name to save the file as</param>
-    /// <param name="targetLink">The url to download the file from</param>
+    /// <param name="targetLinks">The urls to download the file from, tried in order</param>
     /// <param name="progress">A provider for progress updates</param>
     /// <returns>A <see cref="FileInfo"/> object of the cached file</returns>
     /// <remarks>The cached file is only replaced once the download completes, so a failure leaves it intact</remarks>
-    public static async Task<FileInfo?> DownloadFileAsync(string outputFileName, string targetLink, IProgress<double> progress)
+    public static async Task<FileInfo?> DownloadFileAsync(string outputFileName, IReadOnlyList<string> targetLinks,
+        IProgress<double>? progress)
+    {
+        Task<FileInfo?> download;
+
+        // Some callers ask for the same file, use locking here
+        lock (_inFlight)
+        {
+            if (!_inFlight.TryGetValue(outputFileName, out var existing))
+            {
+                existing = DownloadCoreAsync(outputFileName, targetLinks, progress);
+                _inFlight[outputFileName] = existing;
+            }
+
+            download = existing;
+        }
+
+        try
+        {
+            return await download;
+        }
+        finally
+        {
+            lock (_inFlight)
+            {
+                // Only if it is still ours, so a download started since is left to finish
+                if (_inFlight.TryGetValue(outputFileName, out var current) && current == download)
+                {
+                    _inFlight.Remove(outputFileName);
+                }
+            }
+        }
+    }
+
+    private static async Task<FileInfo?> DownloadCoreAsync(string outputFileName, IReadOnlyList<string> targetLinks,
+        IProgress<double> progress)
     {
         Directory.CreateDirectory(CachePath);
 
@@ -237,22 +282,28 @@ public static class DownloadCacheHelper
 
         var tempFile = new FileInfo($"{outputFile.FullName}.{Guid.NewGuid():N}.tmp");
 
-        var clients = new[] { _httpClient, _directHttpClient };
+        List<(string Url, HttpClient Client, bool ViaProxy)> attempts = [];
+
+        foreach (var link in targetLinks)
+        {
+            attempts.Add((link, _httpClient, true));
+            attempts.Add((link, _directHttpClient, false));
+        }
 
         try
         {
-            for (var attempt = 0; attempt < clients.Length; attempt++)
+            for (var attempt = 0; attempt < attempts.Count; attempt++)
             {
-                var viaProxy = attempt == 0;
+                var (url, client, viaProxy) = attempts[attempt];
+                var mode = viaProxy ? "system proxy" : "proxy bypassed";
 
                 try
                 {
                     using (var file = tempFile.Open(FileMode.Create, FileAccess.Write, FileShare.None))
                     {
-                        if (!await clients[attempt].DownloadDataAsync(targetLink, file, progress))
+                        if (!await client.DownloadDataAsync(url, file, progress))
                         {
-                            Log.Error("Download incomplete ({mode}): {url}",
-                                viaProxy ? "system proxy" : "proxy bypassed", targetLink);
+                            Log.Error("Download incomplete ({mode}): {url}", mode, url);
                             continue;
                         }
                     }
@@ -262,24 +313,26 @@ public static class DownloadCacheHelper
 
                     if (!outputFile.Exists)
                     {
-                        Log.Error("Failed to download file from url: {name} :: {url}", outputFileName, targetLink);
+                        Log.Error("Failed to download file from url: {name} :: {url}", outputFileName, url);
                         return null;
                     }
 
                     return outputFile;
                 }
-                catch (Exception ex) when (attempt < clients.Length - 1 && IsTransportFailure(ex))
+                catch (Exception ex) when (attempt < attempts.Count - 1 && IsTransportFailure(ex))
                 {
-                    Log.Warning(ex, "Download failed through the system proxy, retrying without it: {url}", targetLink);
+                    Log.Warning(ex, "Download failed ({mode}), trying the next route: {url}", mode, url);
                 }
             }
 
-            Log.Error("Failed to download file from url: {name} :: {url}", outputFileName, targetLink);
+            Log.Error("Failed to download file from any url: {name} :: {urls}", outputFileName,
+                string.Join(", ", targetLinks));
             return null;
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to download file from url: {name} :: {url}", outputFileName, targetLink);
+            Log.Error(ex, "Failed to download file from url: {name} :: {urls}", outputFileName,
+                string.Join(", ", targetLinks));
             return null;
         }
         finally
@@ -308,12 +361,12 @@ public static class DownloadCacheHelper
     /// Get or download a file using a time to live
     /// </summary>
     /// <param name="fileName">The file to get from cache</param>
-    /// <param name="targetLink">The link to use for the download</param>
+    /// <param name="targetLinks">The links to use for the download, tried in order</param>
     /// <param name="progress">A progress object for reporting download progress</param>
     /// <param name="timeToLive">The time-to-live to check against in the cache</param>
     /// <returns></returns>
-    public static async Task<FileInfo?> GetOrDownloadFileAsync(string fileName, string targetLink,
-        IProgress<double> progress, TimeSpan timeToLive)
+    public static async Task<FileInfo?> GetOrDownloadFileAsync(string fileName, IReadOnlyList<string> targetLinks,
+        IProgress<double>? progress, TimeSpan timeToLive)
     {
         try
         {
@@ -322,8 +375,8 @@ public static class DownloadCacheHelper
                 return cachedFile;
             }
 
-            Log.Information($"Downloading File: {targetLink}");
-            return await DownloadFileAsync(fileName, targetLink, progress);
+            Log.Information($"Downloading File: {targetLinks[0]}");
+            return await DownloadFileAsync(fileName, targetLinks, progress);
         }
         catch (Exception ex)
         {
@@ -340,7 +393,7 @@ public static class DownloadCacheHelper
     /// <param name="progress">A provider for progress updates</param>
     /// <param name="expectedHash">The expected hash of the cached file</param>
     /// <returns>A <see cref="FileInfo"/> object of the cached file</returns>
-    /// <remarks>Use <see cref="DownloadFileAsync(string, string, IProgress{double})"/> if you don't have an expected cache file hash</remarks>
+    /// <remarks>Use <see cref="DownloadFileAsync(string, IReadOnlyList{string}, IProgress{double})"/> if you don't have an expected cache file hash</remarks>
     public static async Task<FileInfo?> GetOrDownloadFileAsync(string fileName, string targetLink,
         IProgress<double> progress, string expectedHash)
     {
@@ -348,9 +401,9 @@ public static class DownloadCacheHelper
         {
             if (CheckCacheHash(fileName, expectedHash, out var cacheFile))
                 return cacheFile;
-            
+
             Log.Information($"Downloading File: {targetLink}");
-            return await DownloadFileAsync(fileName, targetLink, progress);
+            return await DownloadFileAsync(fileName, [targetLink], progress);
         }
         catch (Exception ex)
         {

@@ -38,7 +38,7 @@ public class ReleaseCheckTask : InstallerTaskBase
                 try
                 {
                     var sptReleaseInfoFile =
-                        await DownloadCacheHelper.GetOrDownloadFileAsync("release.json", DownloadCacheHelper.ReleaseMirrorUrl,
+                        await DownloadCacheHelper.GetOrDownloadFileAsync("release.json", DownloadCacheHelper.ReleaseUrls,
                             progress, DownloadCacheHelper.SuggestedTtl);
             
                     if (sptReleaseInfoFile == null)
@@ -49,7 +49,7 @@ public class ReleaseCheckTask : InstallerTaskBase
                     SetStatus("Checking for Patches", "", null, ProgressStyle.Indeterminate);
             
                     var sptPatchMirrorsFile =
-                        await DownloadCacheHelper.GetOrDownloadFileAsync("mirrors.json", DownloadCacheHelper.PatchMirrorUrl,
+                        await DownloadCacheHelper.GetOrDownloadFileAsync("mirrors.json", DownloadCacheHelper.PatchManifestUrls,
                             progress, DownloadCacheHelper.SuggestedTtl);
             
                     if (sptPatchMirrorsFile == null)

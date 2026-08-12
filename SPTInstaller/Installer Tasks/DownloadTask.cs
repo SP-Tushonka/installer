@@ -40,16 +40,36 @@ public class DownloadTask : InstallerTaskBase
             }
         }
 
-        foreach (var mirror in mirrors)
+        foreach (var mirror in await HostReachability.KeepReachableAsync(mirrors, mirror => mirror.Link))
         {
             _expectedPatcherHash = mirror.Hash;
 
             _mirrors.Add(new HttpMirrorDownloader(mirror));
         }
-        
+
         return Result.FromSuccess("Mirrors list ready");
     }
     
+    private static string HostOf(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : url;
+
+    private static async Task<IResult> DownloadFailed(string what, IReadOnlyList<string> urls)
+    {
+        var hosts = string.Join(" or ", urls.Select(HostOf).Distinct(StringComparer.OrdinalIgnoreCase));
+
+        foreach (var url in urls)
+        {
+            if (await HostReachability.IsReachableAsync(url))
+            {
+                return Result.FromError($"Failed to download {what} from {hosts}");
+            }
+        }
+
+        return Result.FromError(
+            $"Could not reach {hosts} to download {what}.\n\n" +
+            "If you chose a specific option in the version list, try another one. Otherwise check your internet connection, VPN or firewall.");
+    }
+
     private async Task<IResult> DownloadPatcherFromMirrors(IProgress<double> progress)
     {
         SetStatus("Downloading Patcher", "Verifying cached patcher ...", progressStyle: ProgressStyle.Indeterminate);
@@ -73,14 +93,16 @@ public class DownloadTask : InstallerTaskBase
                 return Result.FromSuccess();
             }
         }
-        
-        return Result.FromError("Failed to download Patcher");
+
+        return await DownloadFailed("the patcher", _mirrors.Select(mirror => mirror.MirrorInfo.Link).ToList());
     }
     
     private async Task<IResult> DownloadSPTFromMirrors(IProgress<double> progress)
     {
+        var mirrors = await HostReachability.KeepReachableAsync(_data.ReleaseInfo.Mirrors, mirror => mirror.DownloadUrl);
+
         // Note that GetOrDownloadFileAsync handles the cached file hash check, so we don't need to check it first
-        foreach (var mirror in _data.ReleaseInfo.Mirrors)
+        foreach (var mirror in mirrors)
         {
             SetStatus("Downloading", mirror.DownloadUrl, progressStyle: ProgressStyle.Indeterminate);
             
@@ -92,8 +114,8 @@ public class DownloadTask : InstallerTaskBase
                 return Result.FromSuccess();
             }
         }
-        
-        return Result.FromError("Download failed");
+
+        return await DownloadFailed("the release files", mirrors.Select(mirror => mirror.DownloadUrl).ToList());
     }
     
     public override async Task<IResult> TaskOperation()

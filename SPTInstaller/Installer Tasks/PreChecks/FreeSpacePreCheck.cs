@@ -7,8 +7,10 @@ namespace SPTInstaller.Installer_Tasks.PreChecks;
 
 public class FreeSpacePreCheck : PreCheckBase
 {
+    private const long CacheSpaceRequired = 15L * 1024 * 1024 * 1024;
+
     private readonly InternalData _internalData;
-    
+
     public FreeSpacePreCheck(InternalData internalData) : base("Free Space", true)
     {
         _internalData = internalData;
@@ -40,9 +42,11 @@ public class FreeSpacePreCheck : PreCheckBase
                 .FirstOrDefault(d => d.Name.ToLower() == installTargetDirectoryInfo.Root.Name.ToLower())
                 ?.AvailableFreeSpace ?? 0;
             
+            var cacheSpaceMessage = DirectorySizeHelper.SizeSuffix(CacheSpaceRequired, 0);
+
             // add 10Gb overhead to game files for potential patches / release files
             eftSourceDirSize += 10000000000;
-            
+
             var availableSpaceMessage = $"Available Space: {DirectorySizeHelper.SizeSuffix(availableSize, 2)}";
             var requiredSpaceMessage =
                 $"Space Required for Game Client: {DirectorySizeHelper.SizeSuffix(eftSourceDirSize, 2)} including ~10Gb overhead";
@@ -50,7 +54,7 @@ public class FreeSpacePreCheck : PreCheckBase
             var cacheDriveMessage = "";
             var cacheDriveOK = true;
             
-            // if cache directory is on another drive, check that drive for around 5Gb of required space
+            // The cache is under %APPDATA%, so it is usually the system drive no matter where the install goes
             if (cacheDirectory.Root.Name.ToLower() != installTargetDirectoryInfo.Root.Name.ToLower())
             {
                 cacheDriveOK = false;
@@ -59,16 +63,15 @@ public class FreeSpacePreCheck : PreCheckBase
                                                   d.Name.ToLower() == cacheDirectory.Root.Name.ToLower())
                                               ?.AvailableFreeSpace ??
                                           0;
-                
-                // check if the drive where the cache is has at least 5Gb of free space. We should only need 2-3Gb
-                if (availableCacheDriveSize > 5000000000)
+
+                if (availableCacheDriveSize > CacheSpaceRequired)
                 {
-                    cacheDriveMessage = $"Drive for cache '{cacheDirectory.Root.Name}' has at least 5Gb of space. Available: {DirectorySizeHelper.SizeSuffix(availableCacheDriveSize, 2)}";
+                    cacheDriveMessage = $"Drive for cache '{cacheDirectory.Root.Name}' has at least {cacheSpaceMessage} of space. Available: {DirectorySizeHelper.SizeSuffix(availableCacheDriveSize, 2)}";
                     cacheDriveOK = true;
                 }
                 else
                 {
-                    cacheDriveMessage = $"Drive for cache '{cacheDirectory.Root.Name}' does NOT have at least 5Gb of space. Available: {DirectorySizeHelper.SizeSuffix(availableCacheDriveSize, 2)}";
+                    cacheDriveMessage = $"Drive for cache '{cacheDirectory.Root.Name}' does NOT have at least {cacheSpaceMessage} of space. Available: {DirectorySizeHelper.SizeSuffix(availableCacheDriveSize, 2)}";
                 }
             }
             

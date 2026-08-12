@@ -35,9 +35,13 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://patcher.sp-tushonka.com/installer.json
 
     permissions:
       contents: write
+      deployments: write
 
     steps:
       - uses: actions/checkout@v5
@@ -112,7 +116,32 @@ jobs:
             --endpoint-url "$ENDPOINT" \
             --content-type application/json \
             --cache-control "public, max-age=300"
-            
+
+      - name: Upload to mirror
+        env:
+          MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
+          MIRROR_USER: ${{ secrets.MIRROR_USER }}
+          MIRROR_SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
+          MIRROR_ROOT: ${{ vars.MIRROR_ROOT || '/var/www/mirror.sp-tushonka.com' }}
+        run: |
+          if [ -z "$MIRROR_HOST" ]; then
+            echo "No mirror configured, skipping."
+            exit 0
+          fi
+
+          key="$RUNNER_TEMP/mirror_key"
+
+          install -m 600 /dev/null "$key"
+          printf '%s\n' "$MIRROR_SSH_KEY" > "$key"
+
+          sftp -b - -i "$key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$MIRROR_USER@$MIRROR_HOST" <<SFTP
+          put ./publish/SPTInstaller.exe $MIRROR_ROOT/SPTInstaller.exe.part
+          rename $MIRROR_ROOT/SPTInstaller.exe.part $MIRROR_ROOT/SPTInstaller.exe
+          put ./publish/installer.json $MIRROR_ROOT/installer.json.part
+          rename $MIRROR_ROOT/installer.json.part $MIRROR_ROOT/installer.json
+          SFTP
+
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

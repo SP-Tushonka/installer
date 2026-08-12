@@ -93,7 +93,6 @@
 
         <!-- Start install button -->
         <Button Grid.Column="2" Grid.Row="3" Padding="20 10"
-                IsVisible="{Binding !UpdateInfo.Show}"
                 IsEnabled="{Binding AllowInstall}"
                 FontSize="15" FontWeight="SemiBold"
                 Classes="yellow"
