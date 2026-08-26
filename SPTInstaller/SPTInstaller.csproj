@@ -6,8 +6,6 @@
         <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
         <Nullable>enable</Nullable>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-        <ApplicationManifest>app.manifest</ApplicationManifest>
-        <ApplicationIcon>Assets\spt_installer.ico</ApplicationIcon>
         <Configurations>Debug;Release;TEST</Configurations>
         <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
         <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">2.205.0.0</AssemblyVersion>
@@ -15,17 +13,22 @@
         <Company>SPT</Company>
     </PropertyGroup>
 
+    <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <ApplicationIcon>Assets\spt_installer.ico</ApplicationIcon>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+        <AssemblyName>SPTInstaller.Linux</AssemblyName>
+    </PropertyGroup>
+
     <ItemGroup>
         <AvaloniaResource Include="Assets\**" />
         <None Remove=".gitignore" />
         <None Remove="Assets\spt_installer.ico" />
-        <None Remove="Resources\update.ps1" />
     </ItemGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="Resources\update.ps1" />
-        <None Remove="Resources\7z.dll" />
-        <EmbeddedResource Include="Resources\7z.dll" />
         <None Remove="Resources\add_shortcuts.ps1" />
         <None Remove="Resources\desktop_shortcuts.ps1" />
         <EmbeddedResource Include="Resources\add_shortcuts.ps1" />
@@ -46,7 +49,6 @@
         <PackageReference Include="DynamicData" Version="9.4.33" />
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
         <PackageReference Include="SerilogTraceListener" Version="3.2.0" />
-        <PackageReference Include="Squid-Box.SevenZipSharp" Version="1.6.2.24" />
         <PackageReference Include="System.Reactive" Version="7.0.0" />
     </ItemGroup>
 </Project>

@@ -27,25 +27,7 @@ public static class ProcessHelper
                 $"Could not find executable ({executable.Name}) or working directory ({workingDir.Name})");
         }
         
-        var process = new Process();
-        process.StartInfo.FileName = executable.FullName;
-        process.StartInfo.WorkingDirectory = workingDir.FullName;
-        process.EnableRaisingEvents = true;
-        process.StartInfo.Arguments = "autoclose";
-        process.Start();
-        
-        process.WaitForExit();
-
-        return (PatcherExitCode)process.ExitCode switch
-        {
-            PatcherExitCode.Success => Result.FromSuccess("Patcher Finished Successfully, extracting release files"),
-            PatcherExitCode.ProgramClosed => Result.FromError("Patcher was closed before completing!"),
-            PatcherExitCode.EftExeNotFound => Result.FromError("The game executable is missing from the install path"),
-            PatcherExitCode.NoPatchFolder => Result.FromError("Patchers Folder called 'SPT_Patches' is missing"),
-            PatcherExitCode.MissingFile => Result.FromError("Vital game files were not found. The installer is unable to continue. Please reinstall the game and try again."),
-            PatcherExitCode.PatchFailed => Result.FromError("A patch failed to apply"),
-            _ => Result.FromError("An unknown error occurred in the patcher"),
-        };
+        return PlatformOperations.Current.RunPatcher(executable, workingDir);
     }
     
     public static void OpenUrl(string url)

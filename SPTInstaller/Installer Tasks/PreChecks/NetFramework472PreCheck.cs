@@ -3,10 +3,12 @@ using Serilog;
 using SPTInstaller.Helpers;
 using SPTInstaller.Models;
 using System.Diagnostics;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 
 namespace SPTInstaller.Installer_Tasks.PreChecks;
 
+[SupportedOSPlatform("windows")]
 public class NetFramework472PreCheck : PreCheckBase
 {
     public NetFramework472PreCheck() : base(".Net Framework 4.7.2", true)

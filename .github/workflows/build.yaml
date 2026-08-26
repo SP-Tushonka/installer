@@ -31,6 +31,15 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-incremental --no-restore
 
+      - name: Test
+        run: dotnet test -c Release --no-build --no-restore
+
+      - name: Publish Linux installer
+        run: |
+          dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r linux-x64 \
+            -p:PublishSingleFile=true --self-contained true \
+            --no-restore -o ./publish/linux
+
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -65,14 +74,23 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Publish
+      - name: Publish Windows installer
         run: |
           dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r win-x64 \
             -p:PublishSingleFile=true -p:PublishReadyToRun=true --self-contained true \
             -p:AssemblyVersion=${{ steps.version.outputs.version }} \
             -p:FileVersion=${{ steps.version.outputs.version }} \
             -p:InformationalVersion=${{ steps.version.outputs.version }} \
-            -o ./publish
+            -o ./publish/windows
+
+      - name: Publish Linux installer
+        run: |
+          dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r linux-x64 \
+            -p:PublishSingleFile=true -p:PublishReadyToRun=true --self-contained true \
+            -p:AssemblyVersion=${{ steps.version.outputs.version }} \
+            -p:FileVersion=${{ steps.version.outputs.version }} \
+            -p:InformationalVersion=${{ steps.version.outputs.version }} \
+            -o ./publish/linux
 
       - name: Collect release notes
         run: |
@@ -106,7 +124,12 @@ jobs:
           AWS_DEFAULT_REGION: auto
           ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
-          aws s3 cp ./publish/SPTInstaller.exe "s3://${{ secrets.R2_BUCKET }}/SPTInstaller.exe" \
+          aws s3 cp ./publish/windows/SPTInstaller.exe "s3://${{ secrets.R2_BUCKET }}/SPTInstaller.exe" \
+            --endpoint-url "$ENDPOINT" \
+            --content-type application/octet-stream \
+            --cache-control "public, max-age=300"
+
+          aws s3 cp ./publish/linux/SPTInstaller.Linux "s3://${{ secrets.R2_BUCKET }}/SPTInstaller.Linux" \
             --endpoint-url "$ENDPOINT" \
             --content-type application/octet-stream \
             --cache-control "public, max-age=300"
@@ -136,8 +159,10 @@ jobs:
 
           sftp -b - -i "$key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             "$MIRROR_USER@$MIRROR_HOST" <<SFTP
-          put ./publish/SPTInstaller.exe $MIRROR_ROOT/SPTInstaller.exe.part
+          put ./publish/windows/SPTInstaller.exe $MIRROR_ROOT/SPTInstaller.exe.part
           rename $MIRROR_ROOT/SPTInstaller.exe.part $MIRROR_ROOT/SPTInstaller.exe
+          put ./publish/linux/SPTInstaller.Linux $MIRROR_ROOT/SPTInstaller.Linux.part
+          rename $MIRROR_ROOT/SPTInstaller.Linux.part $MIRROR_ROOT/SPTInstaller.Linux
           put ./publish/installer.json $MIRROR_ROOT/installer.json.part
           rename $MIRROR_ROOT/installer.json.part $MIRROR_ROOT/installer.json
           SFTP
@@ -148,7 +173,7 @@ jobs:
         run: |
           if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
             gh release edit "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt"
-            gh release upload "${{ github.ref_name }}" ./publish/SPTInstaller.exe --clobber
+            gh release upload "${{ github.ref_name }}" ./publish/windows/SPTInstaller.exe ./publish/linux/SPTInstaller.Linux --clobber
           else
-            gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt" --target ${{ github.sha }} ./publish/SPTInstaller.exe
+            gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt" --target ${{ github.sha }} ./publish/windows/SPTInstaller.exe ./publish/linux/SPTInstaller.Linux
           fi

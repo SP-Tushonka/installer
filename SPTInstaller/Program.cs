@@ -24,6 +24,12 @@ internal class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (args.Length == 3 && args[0].Equals("--replace-installer", StringComparison.Ordinal))
+        {
+            Environment.ExitCode = InstallerSelfUpdate.ReplaceRunningInstaller(args[1], int.Parse(args[2]));
+            return;
+        }
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -43,8 +49,11 @@ internal class Program
 
 #if !TEST
         ServiceHelper.Register<PreCheckBase, GameInstalledPreCheck>();
-        ServiceHelper.Register<PreCheckBase, NetFramework472PreCheck>();
-        ServiceHelper.Register<PreCheckBase, DesktopRuntimePreCheck>();
+        if (OperatingSystem.IsWindows())
+        {
+            ServiceHelper.Register<PreCheckBase, NetFramework472PreCheck>();
+            ServiceHelper.Register<PreCheckBase, DesktopRuntimePreCheck>();
+        }
         ServiceHelper.Register<PreCheckBase, AspNetCoreRuntimePreCheck>();
         ServiceHelper.Register<PreCheckBase, FreeSpacePreCheck>();
         ServiceHelper.Register<PreCheckBase, GameLauncherPreCheck>();

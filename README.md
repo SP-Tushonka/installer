@@ -28,3 +28,41 @@
 ### Local testing:
 `SPT_RELEASE_URL` and `SPT_MIRRORS_URL` override where the metadata is fetched from, so the flow can be
 driven against local files without touching the published manifests.
+
+## Linux
+
+The installer publishes a self-contained `linux-x64` binary named `SPTInstaller.Linux` alongside the Windows build.
+
+```bash
+chmod +x SPTInstaller.Linux
+./SPTInstaller.Linux
+```
+
+Select two separate folders when prompted:
+
+- the original Escape from Tarkov folder containing `EscapeFromTarkov.exe`;
+- an empty destination for SPT.
+
+The installer checks common native Steam and Wine-prefix locations. Set `SPT_GAME_PATH` before launch to provide the
+original game folder explicitly. The folder picker remains available when automatic discovery does not match a custom
+prefix layout.
+
+When a downpatch is required, install `umu-run`, `wine64`, or `wine`. The installer checks them in that order. Custom
+setups can use these environment variables:
+
+- `SPT_LINUX_RUNNER`: full path to the Windows compatibility runner;
+- `WINEPREFIX`: prefix used for the original game and patcher;
+- `SPT_PROTONPATH`: value passed to `PROTONPATH` when the runner is `umu-run`;
+- `SPT_UMU_PATH`: full path to `umu-run`.
+
+The release archive is extracted without a native `7z.dll`. Archive traversal, symbolic links, duplicate paths, and
+case-colliding paths are rejected before files are written. Linux launcher and server files retain or receive executable
+permissions, and the installer creates `.desktop` launchers in the SPT folder.
+
+### Linux development build
+
+```bash
+dotnet test -c Release
+dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r linux-x64 \
+  -p:PublishSingleFile=true --self-contained true -o ./publish/linux
+```
