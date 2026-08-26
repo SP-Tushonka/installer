@@ -55,14 +55,33 @@ setups can use these environment variables:
 - `SPT_PROTONPATH`: value passed to `PROTONPATH` when the runner is `umu-run`;
 - `SPT_UMU_PATH`: full path to `umu-run`.
 
-On x86_64 Arch-based distributions, install the native UI libraries with:
+Install the native UI libraries for your distribution:
+
+Debian and Ubuntu:
+
+```bash
+sudo apt install libx11-6 libice6 libsm6 libfontconfig1
+```
+
+Fedora:
+
+```bash
+sudo dnf install libX11 libICE libSM fontconfig
+```
+
+Arch-based distributions:
 
 ```bash
 sudo pacman -S --needed libx11 libice libsm fontconfig
 ```
 
-For downpatching, install `umu-launcher` from the `multilib` repository or install Wine. Wayland sessions use XWayland
-because the installer uses Avalonia's default X11 backend.
+For downpatching on Arch, install `umu-launcher` from the `multilib` repository. On other distributions, install a
+package that provides `umu-run` or install Wine. Wayland sessions use XWayland because the installer uses Avalonia's
+default X11 backend.
+
+The published binary targets x86_64 distributions using the GNU C Library (glibc). CI initializes the published artifact
+on Ubuntu, Debian, Fedora, and Arch. Alpine and other musl distributions, NixOS, and ARM64 are outside the current
+artifact and test matrix.
 
 The release archive is extracted without a native `7z.dll`. Archive traversal, symbolic links, duplicate paths, and
 case-colliding paths are rejected before files are written. Linux launcher and server files retain or receive executable
