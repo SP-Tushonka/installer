@@ -38,7 +38,7 @@ jobs:
         run: |
           dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r linux-x64 \
             -p:PublishSingleFile=true --self-contained true \
-            --no-restore -o ./publish/linux
+            -o ./publish/linux
 
   release:
     needs: build
