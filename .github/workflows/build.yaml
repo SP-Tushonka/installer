@@ -57,16 +57,16 @@ jobs:
         include:
           - name: ubuntu-24.04
             image: ubuntu:24.04
-            install: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libx11-6 libice6 libsm6 libfontconfig1 xvfb
+            install: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libx11-6 libice6 libsm6 libfontconfig1 libicu74 xvfb
           - name: debian-13
             image: debian:13-slim
-            install: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libx11-6 libice6 libsm6 libfontconfig1 xvfb
+            install: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libx11-6 libice6 libsm6 libfontconfig1 libicu76 xvfb
           - name: fedora-44
             image: fedora:44
-            install: dnf install -y libX11 libICE libSM fontconfig xorg-x11-server-Xvfb
+            install: dnf install -y libX11 libICE libSM fontconfig libicu xorg-x11-server-Xvfb
           - name: arch
             image: archlinux:base
-            install: pacman -Syu --noconfirm libx11 libice libsm fontconfig xorg-server-xvfb
+            install: pacman -Syu --noconfirm libx11 libice libsm fontconfig icu xorg-server-xvfb
 
     steps:
       - name: Install ${{ matrix.name }} runtime dependencies

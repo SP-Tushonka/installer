@@ -60,19 +60,20 @@ Install the native UI libraries for your distribution:
 Debian and Ubuntu:
 
 ```bash
-sudo apt install libx11-6 libice6 libsm6 libfontconfig1
+sudo apt install libx11-6 libice6 libsm6 libfontconfig1 libicu76  # Debian 13
+sudo apt install libx11-6 libice6 libsm6 libfontconfig1 libicu74  # Ubuntu 24.04
 ```
 
 Fedora:
 
 ```bash
-sudo dnf install libX11 libICE libSM fontconfig
+sudo dnf install libX11 libICE libSM fontconfig libicu
 ```
 
 Arch-based distributions:
 
 ```bash
-sudo pacman -S --needed libx11 libice libsm fontconfig
+sudo pacman -S --needed libx11 libice libsm fontconfig icu
 ```
 
 For downpatching on Arch, install `umu-launcher` from the `multilib` repository. On other distributions, install a
