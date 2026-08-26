@@ -55,6 +55,15 @@ setups can use these environment variables:
 - `SPT_PROTONPATH`: value passed to `PROTONPATH` when the runner is `umu-run`;
 - `SPT_UMU_PATH`: full path to `umu-run`.
 
+On x86_64 Arch-based distributions, install the native UI libraries with:
+
+```bash
+sudo pacman -S --needed libx11 libice libsm fontconfig
+```
+
+For downpatching, install `umu-launcher` from the `multilib` repository or install Wine. Wayland sessions use XWayland
+because the installer uses Avalonia's default X11 backend.
+
 The release archive is extracted without a native `7z.dll`. Archive traversal, symbolic links, duplicate paths, and
 case-colliding paths are rejected before files are written. Linux launcher and server files retain or receive executable
 permissions, and the installer creates `.desktop` launchers in the SPT folder.

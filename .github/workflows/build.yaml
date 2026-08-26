@@ -47,8 +47,30 @@ jobs:
           path: ./publish/linux/SPTInstaller.Linux
           if-no-files-found: error
 
-  release:
+  arch-smoke:
     needs: build
+    runs-on: ubuntu-latest
+    container: archlinux:base
+
+    steps:
+      - name: Install Arch runtime dependencies
+        run: pacman -Syu --noconfirm libx11 libice libsm fontconfig xorg-server-xvfb
+
+      - name: Download Linux installer
+        uses: actions/download-artifact@v8
+        with:
+          name: SPTInstaller-linux-x64
+          path: ./publish/linux
+
+      - name: Initialize Avalonia on Arch
+        run: |
+          chmod +x ./publish/linux/SPTInstaller.Linux
+          xvfb-run -a ./publish/linux/SPTInstaller.Linux --platform-smoke-test
+
+  release:
+    needs:
+      - build
+      - arch-smoke
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment:

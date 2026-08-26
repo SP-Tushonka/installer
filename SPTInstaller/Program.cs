@@ -30,6 +30,22 @@ internal class Program
             return;
         }
 
+        if (args.Length == 1 && args[0].Equals("--platform-smoke-test", StringComparison.Ordinal))
+        {
+            try
+            {
+                BuildAvaloniaApp().SetupWithoutStarting();
+                Console.WriteLine("Platform setup succeeded.");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex);
+                Environment.ExitCode = 1;
+            }
+
+            return;
+        }
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
