@@ -73,9 +73,18 @@ public class SetupClientTask : InstallerTaskBase
             return extractReleaseResult;
         }
 
+        var sptPath = $"{Path.Join(_data.TargetInstallPath, _data.ReleaseInfo?.RuntimeFolderName ?? "SPT_Runtime")}";
+
+        SetStatus("Configuring Launcher", "", 0);
+
+        var launcherResult = PlatformOperations.Current.ConfigureLauncher(sptPath, _data.OriginalGamePath);
+        if (!launcherResult.Succeeded)
+        {
+            return launcherResult;
+        }
+
         SetStatus("Creating Shortcuts", "", 0);
 
-        var sptPath = $"{Path.Join(_data.TargetInstallPath, _data.ReleaseInfo?.RuntimeFolderName ?? "SPT_Runtime")}";
         var shortcutResult = PlatformOperations.Current.CreateShortcuts(_data.TargetInstallPath, sptPath, false);
         if (!shortcutResult.Succeeded)
         {

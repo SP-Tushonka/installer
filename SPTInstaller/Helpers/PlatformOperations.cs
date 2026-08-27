@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.Versioning;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using SPTInstaller.Models;
@@ -33,6 +35,8 @@ public sealed class PlatformOperations
         _adapter.RunPatcher(executable, workingDirectory);
     public Result CreateShortcuts(string installPath, string runtimePath, bool desktop) =>
         _adapter.CreateShortcuts(installPath, runtimePath, desktop);
+    public Result ConfigureLauncher(string runtimePath, string? originalGamePath) =>
+        _adapter.ConfigureLauncher(runtimePath, originalGamePath);
     public Result OpenDirectory(string path) => _adapter.OpenDirectory(path);
     public void EnsureExecutable(string path) => _adapter.EnsureExecutable(path);
 
@@ -52,6 +56,7 @@ public sealed class PlatformOperations
         bool IsRuntimeRequired(string identifier);
         Result RunPatcher(FileInfo executable, DirectoryInfo workingDirectory);
         Result CreateShortcuts(string installPath, string runtimePath, bool desktop);
+        Result ConfigureLauncher(string runtimePath, string? originalGamePath);
         Result OpenDirectory(string path);
         void EnsureExecutable(string path);
     }
@@ -91,6 +96,8 @@ public sealed class PlatformOperations
         public Result CreateShortcuts(string installPath, string runtimePath, bool desktop) =>
             ProcessHelper.RunEmbeddedScript(desktop ? "desktop_shortcuts.ps1" : "add_shortcuts.ps1",
                 desktop ? [runtimePath] : [installPath, runtimePath]);
+
+        public Result ConfigureLauncher(string runtimePath, string? originalGamePath) => Result.FromSuccess();
 
         public Result OpenDirectory(string path)
         {
@@ -210,6 +217,60 @@ public sealed class PlatformOperations
             }
         }
 
+        public Result ConfigureLauncher(string runtimePath, string? originalGamePath)
+        {
+            try
+            {
+                var prefix = DeriveWinePrefix(originalGamePath ?? string.Empty) ??
+                             Environment.GetEnvironmentVariable("WINEPREFIX");
+                if (string.IsNullOrWhiteSpace(prefix) || !Directory.Exists(prefix))
+                {
+                    return Result.FromError(
+                        "Could not derive the Wine prefix from the selected live Tarkov folder. " +
+                        "Set WINEPREFIX and run the installer again.");
+                }
+
+                var umuPath = ResolveUmuRunner();
+                if (umuPath is null)
+                {
+                    return Result.FromError(
+                        "Could not locate umu-run for the SPT Launcher. Install umu-launcher, " +
+                        "or set SPT_UMU_PATH to its executable path.");
+                }
+
+                var settingsDirectory = Path.Combine(runtimePath, "user", "Launcher");
+                var settingsPath = Path.Combine(settingsDirectory, "LauncherSettings.json");
+                Directory.CreateDirectory(settingsDirectory);
+
+                JsonObject root;
+                if (File.Exists(settingsPath))
+                {
+                    root = JsonNode.Parse(File.ReadAllText(settingsPath)) as JsonObject ??
+                           throw new InvalidDataException($"Launcher settings are not a JSON object: {settingsPath}");
+                }
+                else
+                {
+                    root = new JsonObject();
+                }
+
+                var linuxSettings = root["LinuxSettings"] as JsonObject ?? new JsonObject();
+                linuxSettings["PrefixPath"] = Path.TrimEndingDirectorySeparator(Path.GetFullPath(prefix));
+                linuxSettings["UmuPath"] = Path.GetFullPath(umuPath);
+                linuxSettings["ProtonVersion"] =
+                    Environment.GetEnvironmentVariable("SPT_PROTONPATH") ?? "GE-Proton";
+                linuxSettings["DefaultEnv"] = "WINEDLLOVERRIDES=\"winhttp=n,b\"";
+                root["LinuxSettings"] = linuxSettings;
+                root["FirstRun"] = false;
+
+                File.WriteAllText(settingsPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                return Result.FromSuccess();
+            }
+            catch (Exception ex)
+            {
+                return Result.FromError($"Could not configure the Linux SPT Launcher: {ex.Message}");
+            }
+        }
+
         public Result OpenDirectory(string path)
         {
             try
@@ -236,18 +297,36 @@ public sealed class PlatformOperations
 
         private static string? ResolveRunner()
         {
+            var umuRunner = ResolveUmuRunner();
+            if (umuRunner is not null) return umuRunner;
+
             foreach (var candidate in new[]
                      {
                          Environment.GetEnvironmentVariable("SPT_LINUX_RUNNER"),
-                         Environment.GetEnvironmentVariable("SPT_UMU_PATH"),
-                         Path.Combine(UserHome(), ".local", "bin", "umu-run"),
-                         Path.Combine(UserHome(), ".local", "share", "spt-additions", "runtime", "umu-run"),
-                         FindOnPath("umu-run"),
                          FindOnPath("wine64"),
                          FindOnPath("wine")
                      })
             {
                 if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate)) return candidate;
+            }
+
+            return null;
+        }
+
+        private static string? ResolveUmuRunner()
+        {
+            foreach (var candidate in new[]
+                     {
+                         Environment.GetEnvironmentVariable("SPT_UMU_PATH"),
+                         Environment.GetEnvironmentVariable("SPT_LINUX_RUNNER"),
+                         Path.Combine(UserHome(), ".local", "bin", "umu-run"),
+                         Path.Combine(UserHome(), ".local", "share", "spt-additions", "runtime", "umu-run"),
+                         FindOnPath("umu-run")
+                     })
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) &&
+                    Path.GetFileName(candidate).Equals("umu-run", StringComparison.Ordinal) &&
+                    File.Exists(candidate)) return candidate;
             }
 
             return null;

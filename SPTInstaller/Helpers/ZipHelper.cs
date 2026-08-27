@@ -1,12 +1,19 @@
 using System.Collections.Generic;
-using System.IO.Compression;
 using System.Linq;
+using SharpCompress.Archives;
 using SPTInstaller.Models;
 
 namespace SPTInstaller.Helpers;
 
 public static class ZipHelper
 {
+    private sealed record ExtractionPlan(
+        string Key,
+        string Destination,
+        bool IsDirectory,
+        int UnixMode,
+        long Size);
+
     public static Result Decompress(FileInfo archiveFile, DirectoryInfo outputDirectory,
         IProgress<double>? progress = null)
     {
@@ -21,61 +28,79 @@ public static class ZipHelper
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
 
-            using var archiveStream = archiveFile.OpenRead();
-            using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read);
+            var extractionPlan = BuildExtractionPlan(archiveFile, outputRoot, comparison);
+            if (!extractionPlan.Succeeded)
+                return Result.FromError(extractionPlan.Error!);
 
-            var destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var extractionPlan = new List<(ZipArchiveEntry Entry, string Destination, int UnixMode)>();
-            var totalBytes = archive.Entries.Sum(entry => entry.Length);
+            using var archive = ArchiveFactory.OpenArchive(archiveFile);
             long extractedBytes = 0;
 
-            foreach (var entry in archive.Entries)
+            void ExtractFile(ExtractionPlan plan, Action<Stream> writeEntry)
             {
-                var normalizedName = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
-                var destination = Path.GetFullPath(Path.Combine(outputRoot, normalizedName));
-
-                if (!destination.StartsWith(outputRoot, comparison))
+                if (plan.IsDirectory)
                 {
-                    return Result.FromError($"Archive entry escapes the install folder: {entry.FullName}");
+                    Directory.CreateDirectory(plan.Destination);
+                    return;
                 }
 
-                if (!destinations.Add(destination))
+                Directory.CreateDirectory(Path.GetDirectoryName(plan.Destination)!);
+                using (var output = new FileStream(
+                           plan.Destination,
+                           FileMode.Create,
+                           FileAccess.Write,
+                           FileShare.None))
                 {
-                    return Result.FromError($"Archive contains a case-colliding or duplicate path: {entry.FullName}");
+                    writeEntry(output);
                 }
 
-                var unixMode = (entry.ExternalAttributes >> 16) & 0xFFFF;
-                if ((unixMode & 0xF000) == 0xA000)
-                {
-                    return Result.FromError($"Archive contains an unsupported symbolic link: {entry.FullName}");
-                }
+                if (OperatingSystem.IsLinux() && (plan.UnixMode & 0x49) != 0)
+                    File.SetUnixFileMode(plan.Destination, (UnixFileMode)(plan.UnixMode & 0x1FF));
 
-                extractionPlan.Add((entry, destination, unixMode));
+                extractedBytes += plan.Size;
+                progress?.Report(extractionPlan.TotalBytes == 0
+                    ? 100
+                    : extractedBytes * 100d / extractionPlan.TotalBytes);
             }
 
-            foreach (var (entry, destination, unixMode) in extractionPlan)
+            if (archive.IsSolid)
             {
+                using var reader = archive.ExtractAllEntries();
+                var planIndex = 0;
 
-                if (string.IsNullOrEmpty(entry.Name))
+                while (reader.MoveToNextEntry())
                 {
-                    Directory.CreateDirectory(destination);
-                    continue;
+                    if (planIndex >= extractionPlan.Entries.Count)
+                        return Result.FromError("Archive changed between validation and extraction.");
+
+                    var plan = extractionPlan.Entries[planIndex++];
+                    if (!string.Equals(reader.Entry.Key, plan.Key, StringComparison.Ordinal))
+                        return Result.FromError("Archive changed between validation and extraction.");
+
+                    ExtractFile(plan, reader.WriteEntryTo);
                 }
 
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                using (var input = entry.Open())
-                using (var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    input.CopyTo(output);
-                }
+                if (planIndex != extractionPlan.Entries.Count)
+                    return Result.FromError("Archive changed between validation and extraction.");
+            }
+            else
+            {
+                var archiveEntries = archive.Entries.ToList();
+                if (archiveEntries.Count != extractionPlan.Entries.Count)
+                    return Result.FromError("Archive changed between validation and extraction.");
 
-                if (OperatingSystem.IsLinux() && (unixMode & 0x49) != 0)
+                for (var index = 0; index < archiveEntries.Count; index++)
                 {
-                    File.SetUnixFileMode(destination, (UnixFileMode)(unixMode & 0x1FF));
-                }
+                    var entry = archiveEntries[index];
+                    var plan = extractionPlan.Entries[index];
+                    if (!string.Equals(entry.Key, plan.Key, StringComparison.Ordinal))
+                        return Result.FromError("Archive changed between validation and extraction.");
 
-                extractedBytes += entry.Length;
-                progress?.Report(totalBytes == 0 ? 100 : extractedBytes * 100d / totalBytes);
+                    ExtractFile(plan, output =>
+                    {
+                        using var input = entry.OpenEntryStream();
+                        input.CopyTo(output);
+                    });
+                }
             }
 
             outputDirectory.Refresh();
@@ -88,5 +113,53 @@ public static class ZipHelper
         {
             return Result.FromError(ex.Message);
         }
+    }
+
+    private static (bool Succeeded, string? Error, List<ExtractionPlan> Entries, long TotalBytes)
+        BuildExtractionPlan(
+            FileInfo archiveFile,
+            string outputRoot,
+            StringComparison comparison)
+    {
+        using var archive = ArchiveFactory.OpenArchive(archiveFile);
+        var destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var entries = new List<ExtractionPlan>();
+        long totalBytes = 0;
+
+        foreach (var entry in archive.Entries)
+        {
+            var key = entry.Key;
+            if (string.IsNullOrWhiteSpace(key))
+                return (false, "Archive contains an entry without a path.", entries, totalBytes);
+
+            var normalizedName = key
+                .Replace('/', Path.DirectorySeparatorChar)
+                .Replace('\\', Path.DirectorySeparatorChar);
+            var destination = Path.GetFullPath(Path.Combine(outputRoot, normalizedName));
+
+            if (!destination.StartsWith(outputRoot, comparison))
+                return (false, $"Archive entry escapes the install folder: {key}", entries, totalBytes);
+
+            if (!destinations.Add(destination))
+                return (false,
+                    $"Archive contains a case-colliding or duplicate path: {key}",
+                    entries,
+                    totalBytes);
+
+            var attributes = entry.Attrib.GetValueOrDefault();
+            var unixMode = (attributes >> 16) & 0xFFFF;
+            if (!string.IsNullOrWhiteSpace(entry.LinkTarget) ||
+                (unixMode & 0xF000) == 0xA000 ||
+                (attributes & (int)FileAttributes.ReparsePoint) != 0)
+            {
+                return (false, $"Archive contains an unsupported symbolic link: {key}",
+                    entries, totalBytes);
+            }
+
+            entries.Add(new ExtractionPlan(key, destination, entry.IsDirectory, unixMode, entry.Size));
+            totalBytes += entry.Size;
+        }
+
+        return (true, null, entries, totalBytes);
     }
 }

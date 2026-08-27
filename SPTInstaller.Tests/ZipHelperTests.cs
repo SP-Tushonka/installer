@@ -26,6 +26,20 @@ public sealed class ZipHelperTests : IDisposable
     }
 
     [Fact]
+    public void DecompressExtractsSevenZipArchives()
+    {
+        var archivePath = Path.Combine(AppContext.BaseDirectory, "TestAssets", "sample.7z");
+        var output = new DirectoryInfo(Path.Combine(_root, "seven-zip-output"));
+
+        var result = ZipHelper.Decompress(new FileInfo(archivePath), output);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(
+            "ready\n",
+            File.ReadAllText(Path.Combine(output.FullName, "SPT_Runtime", "readme.txt")));
+    }
+
+    [Fact]
     public void DecompressRejectsTraversalBeforeWritingAnyFiles()
     {
         var archivePath = CreateArchive(
