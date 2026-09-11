@@ -6,7 +6,6 @@ using Avalonia.Markup.Xaml;
 using Serilog;
 using SPTInstaller.ViewModels;
 using SPTInstaller.Views;
-using System.Text;
 using SPTInstaller.Helpers;
 using SPTInstaller.Models;
 
@@ -20,18 +19,16 @@ public partial class App : Application
     
     public static void ReLaunch(bool debug, string installPath = "")
     {
-        var installerPath = Path.Join(Environment.CurrentDirectory, "SPTInstaller.exe");
-        
-        var args = new StringBuilder()
-            .Append(debug ? "debug " : "")
-            .Append(!string.IsNullOrEmpty(installPath) ? $"installPath=\"{installPath}\"" : "")
-            .ToString();
-        
-        Process.Start(new ProcessStartInfo()
+        var installerPath = Environment.ProcessPath ??
+                            throw new InvalidOperationException("Could not locate the running installer.");
+        var start = new ProcessStartInfo
         {
             FileName = installerPath,
-            Arguments = args
-        });
+            UseShellExecute = false
+        };
+        if (debug) start.ArgumentList.Add("debug");
+        if (!string.IsNullOrEmpty(installPath)) start.ArgumentList.Add($"installPath={installPath}");
+        Process.Start(start);
         
         Environment.Exit(0);
     }

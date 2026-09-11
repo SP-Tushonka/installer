@@ -5,11 +5,11 @@
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="SPTInstaller.Views.InstallPathSelectionView">
     
-    <Grid RowDefinitions="10,*,Auto,*,10" ColumnDefinitions="10,*,Auto,10">
+    <Grid RowDefinitions="10,*,Auto,Auto,*,10" ColumnDefinitions="10,*,Auto,10">
         
         <!-- Path Controls Grid -->
         <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" 
-              RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto"
+              RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto"
               VerticalAlignment="Center"
               >
         <Label Grid.Row="0" Grid.Column="0" Content="Install Folder Path" FontSize="20"/>
@@ -37,17 +37,34 @@
                 <Label Content="Select Folder"/>
             </StackPanel>
         </Button>
+        <Label Grid.Row="2" Grid.Column="0" Content="Original Escape from Tarkov Folder" FontSize="20" Margin="0 12 0 0"/>
+        <TextBox Grid.Row="3" Grid.Column="0"
+                 TextChanged="TextBox_OnTextChanged"
+                 PlaceholderText="Folder containing EscapeFromTarkov.exe"
+                 FontSize="16"
+                 Text="{Binding OriginalGamePath}"
+                 Classes.hasErrors="{Binding !ValidPath}"/>
+        <Button Grid.Row="3" Grid.Column="1"
+                CornerRadius="20"
+                Margin="10 0 0 0"
+                Command="{Binding SelectGameFolderCommand}">
+            <StackPanel Orientation="Horizontal">
+                <Path Data="{StaticResource OpenFolder}" Fill="{Binding $parent[Button].Foreground}"
+                      VerticalAlignment="Center"/>
+                <Label Content="Select Folder"/>
+            </StackPanel>
+        </Button>
         </Grid>
         
         <!-- Validation error text -->
-        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ErrorMessage}"
+        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ErrorMessage}"
                    TextWrapping="Wrap"
                    FontSize="16" Foreground="red" FontWeight="SemiBold"
                    IsVisible="{Binding !ValidPath}"
                    />
         
         <!-- Next button -->
-        <Button Grid.Row="3" Grid.Column="2"
+        <Button Grid.Row="4" Grid.Column="2"
                 MinWidth="100"
                 MinHeight="30"
                 FontSize="16"

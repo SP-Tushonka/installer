@@ -154,18 +154,16 @@ public class MessageViewModel : ViewModelBase
                 {
                     if (OpenInstallFolder)
                     {
-                        Process.Start(new ProcessStartInfo()
-                        {
-                           FileName = "explorer.exe",
-                           Arguments = data.TargetInstallPath
-                        });
+                        var openResult = PlatformOperations.Current.OpenDirectory(data.TargetInstallPath);
+                        if (!openResult.Succeeded) Log.Error(openResult.Message);
                     }
                     
                     if (AddShortcuts)
                     {
                         Log.Information("Running add shortcuts script ...");
                         var sptPath = $"{Path.Join(data.TargetInstallPath, data.ReleaseInfo?.RuntimeFolderName ?? "SPT_Runtime")}";
-                        var shortcutResult = ProcessHelper.RunEmbeddedScript("desktop_shortcuts.ps1", sptPath);
+                        var shortcutResult = PlatformOperations.Current.CreateShortcuts(
+                            data.TargetInstallPath, sptPath, true);
                         if (!shortcutResult.Succeeded)
                         {
                             Log.Fatal(shortcutResult.Message);

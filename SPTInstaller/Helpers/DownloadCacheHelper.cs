@@ -28,7 +28,7 @@ public static class DownloadCacheHelper
 
     public static readonly string[] ReleaseUrls = Endpoints("release.json", "SPT_RELEASE_URL");
     public static readonly string[] PatchManifestUrls = Endpoints("mirrors.json", "SPT_MIRRORS_URL");
-    public static readonly string[] InstallerUrls = Endpoints("SPTInstaller.exe");
+    public static readonly string[] InstallerUrls = Endpoints(PlatformOperations.Current.InstallerAssetName);
     public static readonly string[] InstallerInfoUrls = Endpoints("installer.json");
 
     private static readonly Dictionary<string, Task<FileInfo?>> _inFlight = new(StringComparer.OrdinalIgnoreCase);

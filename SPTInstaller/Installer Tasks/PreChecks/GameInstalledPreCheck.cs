@@ -14,7 +14,7 @@ public class GameInstalledPreCheck : PreCheckBase
     
     public override async Task<PreCheckResult> CheckOperation()
     {
-        if (_internalData.OriginalGamePath is null || !Directory.Exists(_internalData.OriginalGamePath) || !File.Exists(Path.Join(_internalData.OriginalGamePath, "Escapefromtarkov.exe")))
+        if (_internalData.OriginalGamePath is null || !Directory.Exists(_internalData.OriginalGamePath) || !File.Exists(Path.Join(_internalData.OriginalGamePath, "EscapeFromTarkov.exe")))
         {
             return PreCheckResult.FromError("Your game installation could not be found, try running the game's launcher and ensure the game is installed on your computer", "Retry", RequestReevaluation);
         }
