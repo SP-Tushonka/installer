@@ -68,7 +68,7 @@ jobs:
       - name: Publish
         run: |
           dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r win-x64 \
-            -p:PublishSingleFile=true -p:PublishReadyToRun=true --self-contained true \
+            -p:PublishSingleFile=true -p:CETCompat=false --self-contained true \
             -p:AssemblyVersion=${{ steps.version.outputs.version }} \
             -p:FileVersion=${{ steps.version.outputs.version }} \
             -p:InformationalVersion=${{ steps.version.outputs.version }} \
