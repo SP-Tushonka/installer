@@ -7,12 +7,15 @@ namespace SPTInstaller.Helpers;
 
 public static class DownloadCacheHelper
 {
-    internal static readonly HttpClient _httpClient = CreateClient(useProxy: true);
+    internal static readonly (string Name, HttpClient Client)[] Routes =
+    [
+        ("public DNS", CreateClient(new SocketsHttpHandler { UseProxy = false, ConnectCallback = PublicDns.ConnectAsync })),
+        ("system proxy", CreateClient(new SocketsHttpHandler())),
+        ("proxy bypassed", CreateClient(new SocketsHttpHandler { UseProxy = false })),
+    ];
 
-    internal static readonly HttpClient _directHttpClient = CreateClient(useProxy: false);
-
-    private static HttpClient CreateClient(bool useProxy) =>
-        new(new SocketsHttpHandler { UseProxy = useProxy }) { Timeout = TimeSpan.FromMinutes(15) };
+    private static HttpClient CreateClient(SocketsHttpHandler handler) =>
+        new(handler) { Timeout = TimeSpan.FromMinutes(15) };
 
     private const string VersionMarkerFileName = ".installer-version";
 
@@ -282,20 +285,21 @@ public static class DownloadCacheHelper
 
         var tempFile = new FileInfo($"{outputFile.FullName}.{Guid.NewGuid():N}.tmp");
 
-        List<(string Url, HttpClient Client, bool ViaProxy)> attempts = [];
+        List<(string Url, string Mode, HttpClient Client)> attempts = [];
 
         foreach (var link in targetLinks)
         {
-            attempts.Add((link, _httpClient, true));
-            attempts.Add((link, _directHttpClient, false));
+            foreach (var (mode, client) in Routes)
+            {
+                attempts.Add((link, mode, client));
+            }
         }
 
         try
         {
             for (var attempt = 0; attempt < attempts.Count; attempt++)
             {
-                var (url, client, viaProxy) = attempts[attempt];
-                var mode = viaProxy ? "system proxy" : "proxy bypassed";
+                var (url, mode, client) = attempts[attempt];
 
                 try
                 {
@@ -306,6 +310,14 @@ public static class DownloadCacheHelper
                             Log.Error("Download incomplete ({mode}): {url}", mode, url);
                             continue;
                         }
+                    }
+
+                    tempFile.Refresh();
+
+                    if (tempFile.Length == 0)
+                    {
+                        Log.Error("Download was empty ({mode}): {url}", mode, url);
+                        continue;
                     }
 
                     File.Move(tempFile.FullName, outputFile.FullName, true);
@@ -353,9 +365,10 @@ public static class DownloadCacheHelper
         }
     }
 
-    // Only the HTTP stack's own failures are worth a proxy-less retry; a local file error is not
+    // Only the HTTP stack's own failures are worth retrying over another route. A local file error is not.
+    // HttpIOException is how a connection dropped mid-body surfaces.
     private static bool IsTransportFailure(Exception exception)
-        => exception is HttpRequestException or TaskCanceledException;
+        => exception is HttpRequestException or HttpIOException or TaskCanceledException;
 
     /// <summary>
     /// Get or download a file using a time to live

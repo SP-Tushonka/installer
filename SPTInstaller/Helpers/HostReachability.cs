@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,11 +63,7 @@ public static class HostReachability
 
     private static async Task<bool> ProbeAsync(string authority)
     {
-        List<Task<bool>> attempts =
-        [
-            AnswersAsync(DownloadCacheHelper._httpClient, authority),
-            AnswersAsync(DownloadCacheHelper._directHttpClient, authority),
-        ];
+        List<Task<bool>> attempts = [.. DownloadCacheHelper.Routes.Select(route => AnswersAsync(route.Client, authority))];
 
         while (attempts.Count > 0)
         {
