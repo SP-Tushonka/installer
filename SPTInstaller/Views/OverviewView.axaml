@@ -14,7 +14,7 @@
         <!-- Overview info -->
         <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2">
             <Label>◉ Check dependencies are installed, such as .NET</Label>
-            <Label>◉ Automatically locate and copy your game files to the path you supply on the next page</Label>
+            <Label>◉ Locate or select your original game folder and copy it to the path you supply on the next page</Label>
             <Label>◉ Downgrade your game files to the version we use, if needed</Label>
             <Label>◉ Download and extract our latest runtime files</Label>
         </StackPanel>

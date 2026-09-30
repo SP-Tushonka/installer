@@ -47,14 +47,8 @@ public partial class WhyCacheThoughDialog : UserControl
         if (!CacheExists)
             return;
         
-        Process.Start(new ProcessStartInfo()
-        {
-            FileName = Path.EndsInDirectorySeparator(DownloadCacheHelper.CachePath)
-                ? DownloadCacheHelper.CachePath
-                : DownloadCacheHelper.CachePath + Path.DirectorySeparatorChar,
-            UseShellExecute = true,
-            Verb = "open"
-        });
+        var result = PlatformOperations.Current.OpenDirectory(DownloadCacheHelper.CachePath);
+        if (!result.Succeeded) Log.Error(result.Message);
     }
     
     public void ClearCachedMetaData()
@@ -75,7 +69,7 @@ public partial class WhyCacheThoughDialog : UserControl
         switch (_movePatcherState)
         {
             case 0:
-                var downloadsPath = KnownFolders.GetPath(KnownFolder.Downloads);
+                var downloadsPath = PlatformOperations.Current.DownloadsPath;
                 
                 var downloadsFolder = new DirectoryInfo(downloadsPath);
                 

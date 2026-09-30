@@ -5,4 +5,5 @@
     <BuildType Name="TEST" />
   </Configurations>
   <Project Path="SPTInstaller/SPTInstaller.csproj" />
+  <Project Path="SPTInstaller.Tests/SPTInstaller.Tests.csproj" />
 </Solution>

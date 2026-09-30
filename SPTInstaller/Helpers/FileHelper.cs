@@ -11,6 +11,12 @@ public static class FileHelper
 {
     public static string GetRedactedPath(string path)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return string.IsNullOrEmpty(home) ? path : path.Replace(home, "~", StringComparison.Ordinal);
+        }
+
         var nameMatched = Regex.Match(path, @".:\\[uU]sers\\(?<NAME>[^\\]+)");
         
         if (nameMatched.Success)
@@ -33,7 +39,17 @@ public static class FileHelper
         {
             var allFiles = sourceDir.GetFiles("*", SearchOption.AllDirectories);
             var fileCopies = new List<CopyInfo>();
+            var normalizedExclusions = (exclusions ?? [])
+                .Select(exclusion => exclusion.TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar))
+                .ToArray();
             int count = 0;
+
+            if (allFiles.Length == 0)
+            {
+                updateCallback?.Invoke("No client files to copy", 100);
+                return Result.FromSuccess();
+            }
             
             // filter files before starting copy
             foreach (var file in allFiles)
@@ -41,20 +57,16 @@ public static class FileHelper
                 count++;
                 updateCallback?.Invoke("getting list of files to copy", (int)Math.Floor((double)count / allFiles.Length * 100));
                 
-                var currentFileRelativePath = file.FullName.Replace(sourceDir.FullName, "");
+                var currentFileRelativePath = Path.GetRelativePath(sourceDir.FullName, file.FullName);
 
-                if (exclusions != null)
+                var excluded = normalizedExclusions.Any(exclusion =>
+                    currentFileRelativePath.Equals(exclusion, StringComparison.OrdinalIgnoreCase) ||
+                    currentFileRelativePath.StartsWith(exclusion + Path.DirectorySeparatorChar,
+                        StringComparison.OrdinalIgnoreCase));
+                if (excluded)
                 {
-                    // check exclusions
-                    foreach (var exclusion in exclusions)
-                    {
-                        if (currentFileRelativePath.StartsWith(exclusion) || currentFileRelativePath == exclusion)
-                        {
-                            Log.Debug(
-                                $"EXCLUSION FOUND :: FILE\nExclusion: '{exclusion}'\nPath: '{currentFileRelativePath}'");
-                            break;
-                        }
-                    }
+                    Log.Debug("EXCLUSION FOUND :: FILE\nPath: '{Path}'", currentFileRelativePath);
+                    continue;
                 }
 
                 // don't copy .bak files
@@ -64,7 +76,8 @@ public static class FileHelper
                     continue;
                 }
                 
-                fileCopies.Add(new CopyInfo(file.FullName, file.FullName.Replace(sourceDir.FullName, targetDir.FullName)));
+                fileCopies.Add(new CopyInfo(file.FullName,
+                    Path.Combine(targetDir.FullName, currentFileRelativePath)));
             }
 
             count = 0;
@@ -167,7 +180,7 @@ public static class FileHelper
             switch (check.CheckType)
             {
                 case PathCheckType.EndsWith:
-                    if (path.ToLower().EndsWith(check.Target.ToLower()))
+                    if (path.EndsWith(check.Target, StringComparison.OrdinalIgnoreCase))
                     {
                         failedCheck = check;
                         return true;
@@ -175,7 +188,7 @@ public static class FileHelper
                     
                     break;
                 case PathCheckType.Contains:
-                    if (path.ToLower().Contains(check.Target.ToLower()))
+                    if (path.Contains(check.Target, StringComparison.OrdinalIgnoreCase))
                     {
                         failedCheck = check;
                         return true;
@@ -183,7 +196,12 @@ public static class FileHelper
                     
                     break;
                 case PathCheckType.DriveRoot:
-                    if (Regex.Match(path.ToLower(), @"^\w:(\\|\/)$").Success)
+                    var fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+                    var root = Path.TrimEndingDirectorySeparator(Path.GetPathRoot(fullPath) ?? "");
+                    var pathComparison = OperatingSystem.IsWindows()
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal;
+                    if (fullPath.Equals(root, pathComparison))
                     {
                         failedCheck = check;
                         return true;

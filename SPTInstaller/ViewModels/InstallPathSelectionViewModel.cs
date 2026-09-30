@@ -1,5 +1,4 @@
 ﻿using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -22,6 +21,14 @@ public class InstallPathSelectionViewModel : ViewModelBase
         get => _selectedPath;
         set => this.RaiseAndSetIfChanged(ref _selectedPath, value);
     }
+
+    private string _originalGamePath;
+
+    public string OriginalGamePath
+    {
+        get => _originalGamePath;
+        set => this.RaiseAndSetIfChanged(ref _originalGamePath, value);
+    }
     
     private bool _validPath;
     public bool ValidPath
@@ -42,6 +49,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
     {
         _data = ServiceHelper.Get<InternalData?>() ?? throw new Exception("Failed to get internal data");
         SelectedPath = Environment.CurrentDirectory;
+        OriginalGamePath = PreCheckHelper.DetectOriginalGamePath() ?? "";
         ValidPath = false;
         
         if (!string.IsNullOrEmpty(installPath))
@@ -81,23 +89,72 @@ public class InstallPathSelectionViewModel : ViewModelBase
                     Title = "Select a folder to install into"
                 });
             
-            SelectedPath = selections.First().Path.LocalPath;
+            var selection = selections.FirstOrDefault();
+            if (selection is not null) SelectedPath = selection.Path.LocalPath;
         } 
+    }
+
+
+    public async Task SelectGameFolderCommand()
+    {
+        if (Application.Current.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop ||
+            desktop.MainWindow is null) return;
+
+        var startingPath = Directory.Exists(OriginalGamePath) ? OriginalGamePath : Environment.CurrentDirectory;
+        var suggestedFolder = await desktop.MainWindow.StorageProvider.TryGetFolderFromPathAsync(startingPath);
+        var selections = await desktop.MainWindow.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            AllowMultiple = false,
+            SuggestedStartLocation = suggestedFolder,
+            Title = "Select the original Escape from Tarkov folder"
+        });
+        var selection = selections.FirstOrDefault();
+        if (selection is not null) OriginalGamePath = selection.Path.LocalPath;
     }
     
     public void ValidatePath()
     {
-        if (String.IsNullOrEmpty(SelectedPath) || SelectedPath.Length < 4)
+        if (string.IsNullOrWhiteSpace(OriginalGamePath) ||
+            !File.Exists(Path.Combine(OriginalGamePath, "EscapeFromTarkov.exe")))
+        {
+            ErrorMessage = "Select the original Escape from Tarkov folder containing EscapeFromTarkov.exe";
+            ValidPath = false;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedPath))
         {
             ErrorMessage = "Please provide an install path";
             ValidPath = false;
             return;
         }
         
-        var match = Regex.Match(SelectedPath[2..], @"[\/:*?""<>|!@#$%^&*+=,[\]{}`~;']|\\\\");
-        if (match.Success)
+        if (SelectedPath.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
         {
-            ErrorMessage = "Path cannot contain symbols other than ( ) \\ - _ .";
+            ErrorMessage = "The install path contains characters that are invalid on this operating system";
+            ValidPath = false;
+            return;
+        }
+
+        try
+        {
+            var target = Path.TrimEndingDirectorySeparator(Path.GetFullPath(SelectedPath));
+            var source = Path.TrimEndingDirectorySeparator(Path.GetFullPath(OriginalGamePath));
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            if (target.Equals(source, comparison) ||
+                target.StartsWith(source + Path.DirectorySeparatorChar, comparison) ||
+                source.StartsWith(target + Path.DirectorySeparatorChar, comparison))
+            {
+                ErrorMessage = "The SPT folder must be separate from the original game folder";
+                ValidPath = false;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"The install path is invalid: {ex.Message}";
             ValidPath = false;
             return;
         }
@@ -134,7 +191,9 @@ public class InstallPathSelectionViewModel : ViewModelBase
                 
                 case PathCheckType.Contains:
                 case PathCheckType.DriveRoot:
-                    SelectedPath = Path.Join(Directory.GetDirectoryRoot(Environment.CurrentDirectory), "SPT");
+                    SelectedPath = OperatingSystem.IsLinux()
+                        ? Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "SPT")
+                        : Path.Join(Directory.GetDirectoryRoot(Environment.CurrentDirectory), "SPT");
                     break;
                 
                 default:
@@ -151,8 +210,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
         }
         
         _data.TargetInstallPath = SelectedPath;
-        
-        _data.OriginalGamePath = PreCheckHelper.DetectOriginalGamePath();
+        _data.OriginalGamePath = OriginalGamePath;
         
 #if !TEST
         if (_data.OriginalGamePath == null)

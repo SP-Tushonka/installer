@@ -20,12 +20,17 @@ public abstract class DotnetRuntimePreCheckBase(string name, string identifier, 
 
         Name = requirement.DisplayName;
 
+        if (!PlatformOperations.Current.IsRuntimeRequired(requirement.Identifier))
+        {
+            return PreCheckResult.FromSuccess($"{requirement.DisplayName} is not required on this platform");
+        }
+
         string[] output;
 
         try
         {
-            var programFiles = Environment.ExpandEnvironmentVariables("%ProgramW6432%");
-            var result = ProcessHelper.RunAndReadProcessOutputs($@"{programFiles}\dotnet\dotnet.exe", "--list-runtimes");
+            var result = ProcessHelper.RunAndReadProcessOutputs(
+                PlatformOperations.Current.DotnetExecutable, "--list-runtimes");
 
             if (!result.Succeeded)
             {
@@ -36,7 +41,7 @@ public abstract class DotnetRuntimePreCheckBase(string name, string identifier, 
                 );
             }
 
-            output = result.StdOut.Split("\r\n");
+            output = result.StdOut.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
         }
         catch (Exception ex)
         {

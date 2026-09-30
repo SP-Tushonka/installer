@@ -70,35 +70,20 @@ public class InstallerUpdateInfo : ReactiveObject
         Updating = true;
         UpdateAvailable = false;
         
-        var updater = new FileInfo(Path.Join(DownloadCacheHelper.CachePath, "update.ps1"));
-        
-        if (!FileHelper.StreamAssemblyResourceOut("update.ps1", updater.FullName))
-        {
-            Log.Fatal("Failed to prepare update file");
-            return;
-        }
-        
-        
-        if (!updater.Exists)
-        {
-            UpdateInfoText = "Failed to get updater from resources :(";
-            return;
-        }
-        
         var newInstallerPath = await DownloadNewInstaller();
         
         if (string.IsNullOrWhiteSpace(newInstallerPath))
             return;
         
-        Process.Start(new ProcessStartInfo
+        var result = InstallerSelfUpdate.LaunchReplacement(newInstallerPath);
+        if (!result.Succeeded)
         {
-            FileName = "powershell.exe",
-            ArgumentList =
-            {
-                "-ExecutionPolicy", "Bypass", "-File", $"{updater.FullName}", $"{newInstallerPath}",
-                $"{Path.Join(Environment.CurrentDirectory, "SPTInstaller.exe")}"
-            }
-        });
+            UpdateInfoText = result.Message;
+            Updating = false;
+            return;
+        }
+
+        Environment.Exit(0);
     }
     
     private async Task<string> DownloadNewInstaller()
@@ -107,8 +92,8 @@ public class InstallerUpdateInfo : ReactiveObject
         
         var progress = new Progress<double>(x => DownloadProgress = (int)x);
         
-        var file = await DownloadCacheHelper.DownloadFileAsync("SPTInstaller.exe", DownloadCacheHelper.InstallerUrls,
-            progress);
+        var file = await DownloadCacheHelper.DownloadFileAsync(
+            PlatformOperations.Current.InstallerAssetName, DownloadCacheHelper.InstallerUrls, progress);
         
         if (file == null || !file.Exists)
         {
