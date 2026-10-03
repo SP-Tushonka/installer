@@ -75,6 +75,7 @@ public class SetupClientTask : InstallerTaskBase
             
             SetStatus($"Running Patcher{step}", "", null, ProgressStyle.Indeterminate);
             
+            patcherEXE.Refresh();
             var patchingResult = ProcessHelper.PatchClientFiles(patcherEXE, targetInstallDirInfo);
             
             if (!patchingResult.Succeeded)
@@ -88,6 +89,13 @@ public class SetupClientTask : InstallerTaskBase
             if (patchesDir.Exists)
             {
                 patchesDir.Delete(true);
+            }
+
+            patcherEXE.Refresh();
+
+            if (patcherEXE.Exists)
+            {
+                patcherEXE.Delete();
             }
 
             // Each patcher writes patcher.log, so an earlier step's log is kept under its step number
