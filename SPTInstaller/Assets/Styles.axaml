@@ -202,6 +202,7 @@
     <Style Selector="Button.yellow:disabled /template/ ContentPresenter">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{StaticResource SPT_Brush_DarkGrayBlue}" />
+        <Setter Property="Foreground" Value="{StaticResource SPT_Brush_Lighter}" />
     </Style>
 
     <!-- Button outlined Style -->

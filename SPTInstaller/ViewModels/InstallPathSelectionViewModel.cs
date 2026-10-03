@@ -38,21 +38,26 @@ public class InstallPathSelectionViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _errorMessage, value);
     }
     
-    public InstallPathSelectionViewModel(IScreen host, string installPath) : base(host)
+    /// <param name="autoAdvance">Skip straight to the prechecks when <paramref name="installPath"/> is valid</param>
+    public InstallPathSelectionViewModel(IScreen host, string installPath, bool autoAdvance = true) : base(host)
     {
         _data = ServiceHelper.Get<InternalData?>() ?? throw new Exception("Failed to get internal data");
         SelectedPath = Environment.CurrentDirectory;
         ValidPath = false;
-        
+
         if (!string.IsNullOrEmpty(installPath))
         {
             SelectedPath = installPath;
             ValidatePath();
-            
+
             if (ValidPath)
             {
-                Log.Information("Install Path was provided by parameter and seems valid");
-                Task.Run(NextCommand);
+                if (autoAdvance)
+                {
+                    Log.Information("Install Path was provided by parameter and seems valid");
+                    Task.Run(NextCommand);
+                }
+
                 return;
             }
         }

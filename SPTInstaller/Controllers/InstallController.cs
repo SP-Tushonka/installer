@@ -4,6 +4,7 @@ using SPTInstaller.Interfaces;
 using SPTInstaller.Models;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SPTInstaller.Controllers;
@@ -14,6 +15,7 @@ public class InstallController
     public event EventHandler<IProgressableTask> TaskChanged = delegate { };
     
     private bool _installRunning = false;
+    private readonly SemaphoreSlim _preCheckRun = new(1, 1);
     private IPreCheck[] _preChecks { get; set; }
     private IProgressableTask[] _tasks { get; set; }
     
@@ -46,33 +48,45 @@ public class InstallController
     
     public async Task<IResult> RunPreChecks()
     {
-        Log.Information("-<>--<>- Running PreChecks -<>--<>-");
-        var requiredResults = new List<IResult>();
-        
-        foreach (var check in _preChecks)
+        // Picking a version reruns the checks, which can start while the screen's first run is still going
+        await _preCheckRun.WaitAsync();
+
+        try
         {
-            check.State = StatusSpinner.SpinnerState.Pending;
-        }
-        
-        foreach (var check in _preChecks)
-        {
-            var result = await check.RunCheck();
-            
-            Log.Information(
-                $"PreCheck: {check.Name} ({(check.IsRequired ? "Required" : "Optional")}) -> {(result.Succeeded ? "Passed" : "Failed")}\nDetail: {check.PreCheckDetails.ReplaceLineEndings(" ")}");
-            
-            if (check.IsRequired)
+            Log.Information("-<>--<>- Running PreChecks -<>--<>-");
+            var requiredResults = new List<IResult>();
+
+            // A check that already has a result keeps showing it, so a rerun does not flash the details pane
+            foreach (var check in _preChecks.Where(check => check.State is not (StatusSpinner.SpinnerState.OK
+                         or StatusSpinner.SpinnerState.Warning or StatusSpinner.SpinnerState.Error)))
             {
-                requiredResults.Add(result);
+                check.State = StatusSpinner.SpinnerState.Pending;
             }
+
+            foreach (var check in _preChecks)
+            {
+                var result = await check.RunCheck();
+
+                Log.Information(
+                    $"PreCheck: {check.Name} ({(check.IsRequired ? "Required" : "Optional")}) -> {(result.Succeeded ? "Passed" : "Failed")}\nDetail: {check.PreCheckDetails.ReplaceLineEndings(" ")}");
+
+                if (check.IsRequired)
+                {
+                    requiredResults.Add(result);
+                }
+            }
+
+            if (requiredResults.Any(result => !result.Succeeded))
+            {
+                return Result.FromError("Some required checks have failed");
+            }
+
+            return Result.FromSuccess();
         }
-        
-        if (requiredResults.Any(result => !result.Succeeded))
+        finally
         {
-            return Result.FromError("Some required checks have failed");
+            _preCheckRun.Release();
         }
-        
-        return Result.FromSuccess();
     }
     
     public async Task<IResult> RunTasks()

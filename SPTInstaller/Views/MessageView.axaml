@@ -43,8 +43,13 @@
         </StackPanel>
         
         <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Spacing="10">
-            <CheckBox IsChecked="{Binding OpenInstallFolder}" Content="Open Install Folder" IsVisible="{Binding ShowOptions}"/>
-            <CheckBox IsChecked="{Binding AddShortcuts}" Content="Add Desktop Shortcuts" IsVisible="{Binding ShowOptions}"/>
+            <!-- The theme recolours checked content, a local foreground on the text keeps it readable -->
+            <CheckBox IsChecked="{Binding OpenInstallFolder}" IsVisible="{Binding ShowOptions}">
+                <TextBlock Text="Open Install Folder" Foreground="White" />
+            </CheckBox>
+            <CheckBox IsChecked="{Binding AddShortcuts}" IsVisible="{Binding ShowOptions}">
+                <TextBlock Text="Add Desktop Shortcuts" Foreground="White" />
+            </CheckBox>
         </StackPanel>
 
         <cc:CacheInfo Grid.Row="7" Grid.ColumnSpan="3" Padding="10" Margin="10 0 0 0"

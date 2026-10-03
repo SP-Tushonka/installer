@@ -74,12 +74,15 @@
 
         <!-- Install path info -->
         <StackPanel Grid.Row="3" Grid.Column="1">
-            <Label Content="Install Path" FontSize="20" />
+            <StackPanel Orientation="Horizontal">
+                <Label Content="Install Path" FontSize="20" />
+                <Button Content="Change" Classes="link" VerticalAlignment="Bottom" Margin="0 0 0 -2" Padding="4 5 8 6"
+                        Command="{Binding ChangeInstallPathCommand}" />
+            </StackPanel>
 
             <TextBlock TextWrapping="Wrap" Margin="3 0"
                        Text="{Binding InstallPath}"
                        Foreground="DodgerBlue" FontWeight="SemiBold" />
-
             <!-- Hidden when there is nothing to choose between -->
             <StackPanel Orientation="Horizontal" Spacing="10" Margin="0 8 0 0"
                         IsVisible="{Binding ShowChannels}">
@@ -99,7 +102,7 @@
                 Command="{Binding StartInstallCommand}"
                 CornerRadius="15">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding InstallButtonText}" VerticalAlignment="Center" Foreground="Black" />
+                <TextBlock Text="{Binding InstallButtonText}" VerticalAlignment="Center" />
                 <cc:StatusSpinner State="{Binding InstallButtonCheckState}" Margin="2"
                                   IsVisible="{Binding !AllowInstall}" />
             </StackPanel>

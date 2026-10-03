@@ -52,24 +52,28 @@ public class PreChecksViewModel : ViewModelBase
 
             if (value?.Release != null)
             {
-                InstallButtonText = $"Start Install: v{value.Release.SPTVersion}";
+                _installButtonRelease = value.Release;
             }
 
-            // Requirements are per release, so the checks have to be evaluated again for the new one.
+            // Requirements are per release, so a version picked by the user reruns the checks. The first pick is
+            // made before the screen's own run, which already covers it.
             var installer = ServiceHelper.Get<InstallController?>();
 
-            if (installer != null && value != null)
+            if (installer != null && value != null && _channelsLoaded)
             {
                 Task.Run(async () =>
                 {
                     var result = await installer.RunPreChecks();
-                    AllowInstall = result.Succeeded;
+                    SelectFirstFailedCheck();
+                    UpdateInstallButton(result.Succeeded);
                 });
             }
         }
     }
 
     private ReleaseInfo _installButtonRelease;
+
+    private bool _channelsLoaded;
 
     private bool _showChannels;
 
@@ -83,6 +87,8 @@ public class PreChecksViewModel : ViewModelBase
     public ICommand StartInstallCommand { get; set; }
     
     public ICommand LaunchWithDebug { get; set; }
+
+    public ICommand ChangeInstallPathCommand { get; set; }
     
     private bool _debugging;
     
@@ -146,56 +152,63 @@ public class PreChecksViewModel : ViewModelBase
     /// </summary>
     private async Task LoadChannelsAsync()
     {
-        try
+        // A damaged cached file is cleared and fetched once more before giving up
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            var releaseFile = await DownloadCacheHelper.GetOrDownloadFileAsync("release.json",
-                DownloadCacheHelper.ReleaseUrls, null, DownloadCacheHelper.SuggestedTtl);
-
-            if (releaseFile == null)
+            try
             {
-                Log.Warning("Could not fetch release info for the version list, falling back to the newest release");
-                return;
-            }
+                var releaseFile = await DownloadCacheHelper.GetOrDownloadFileAsync("release.json",
+                    DownloadCacheHelper.ReleaseUrls, null, DownloadCacheHelper.SuggestedTtl);
 
-            var manifest = JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(releaseFile.FullName), JsonOptions.Default);
-
-            if (manifest?.Releases == null || manifest.Releases.Count == 0)
-            {
-                Log.Warning("No releases were published, falling back to the newest release");
-                return;
-            }
-
-            var channels = new List<InstallChannel>();
-
-            foreach (var release in manifest.Releases)
-            {
-                for (int i = 0; i < (release.Mirrors?.Count ?? 0); i++)
+                if (releaseFile == null)
                 {
-                    channels.Add(new InstallChannel
+                    Log.Warning("Could not fetch release info for the version list");
+                    return;
+                }
+
+                var manifest = JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(releaseFile.FullName), JsonOptions.Default);
+
+                if (manifest?.Releases == null || manifest.Releases.Count == 0)
+                {
+                    Log.Warning("No releases were published");
+                    return;
+                }
+
+                var channels = new List<InstallChannel>();
+
+                foreach (var release in manifest.Releases)
+                {
+                    for (int i = 0; i < (release.Mirrors?.Count ?? 0); i++)
                     {
-                        Release = release,
-                        MirrorIndex = i,
-                        MirrorName = release.Mirrors[i].Name,
-                    });
+                        channels.Add(new InstallChannel
+                        {
+                            Release = release,
+                            MirrorIndex = i,
+                            MirrorName = release.Mirrors[i].Name,
+                        });
+                    }
                 }
-            }
 
-            channels = await HostReachability.KeepReachableAsync(channels, channel => channel.Release.Mirrors[channel.MirrorIndex].DownloadUrl);
+                channels = await HostReachability.KeepReachableAsync(channels, channel => channel.Release.Mirrors[channel.MirrorIndex].DownloadUrl);
 
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                foreach (var channel in channels)
+                await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    Channels.Add(channel);
-                }
+                    foreach (var channel in channels)
+                    {
+                        Channels.Add(channel);
+                    }
 
-                SelectedChannel = Channels.FirstOrDefault();
-                ShowChannels = Channels.Count > 1;
-            });
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Could not build the version list, falling back to the newest release");
+                    SelectedChannel = Channels.FirstOrDefault();
+                    ShowChannels = Channels.Count > 1;
+                });
+
+                return;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Could not build the version list");
+                DownloadCacheHelper.ClearMetadataCache();
+            }
         }
     }
 
@@ -206,9 +219,44 @@ public class PreChecksViewModel : ViewModelBase
             if (sender is InstallController installer)
             {
                 var result = await installer.RunPreChecks();
-                AllowInstall = result.Succeeded;
+                SelectFirstFailedCheck();
+                UpdateInstallButton(result.Succeeded);
             }
         });
+    }
+
+    // Shows why install is blocked without making the user hunt for the red check
+    private void SelectFirstFailedCheck()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (PreChecks.Any(check => check.IsSelected))
+            {
+                return;
+            }
+
+            var failed = PreChecks.FirstOrDefault(check => check.State == StatusSpinner.SpinnerState.Error);
+
+            if (failed != null)
+            {
+                SelectPreCheckCommand?.Execute(failed);
+            }
+        });
+    }
+
+    private void UpdateInstallButton(bool checksPassed)
+    {
+        AllowInstall = checksPassed;
+
+        if (_installButtonRelease == null)
+        {
+            return;
+        }
+
+        InstallButtonText = checksPassed
+            ? $"Start Install: v{_installButtonRelease.SPTVersion}"
+            : "Fix the failed checks to install";
+        InstallButtonCheckState = checksPassed ? StatusSpinner.SpinnerState.OK : StatusSpinner.SpinnerState.Error;
     }
     
     public PreChecksViewModel(IScreen host) : base(host)
@@ -217,7 +265,13 @@ public class PreChecksViewModel : ViewModelBase
         var installer = ServiceHelper.Get<InstallController?>();
         
         Debugging = data.DebugMode;
-        
+
+        // The checks are shared, so a selection made before changing the install path would otherwise carry over
+        foreach (var precheck in PreChecks)
+        {
+            precheck.IsSelected = false;
+        }
+
         installer.RecheckRequested += ReCheckRequested;
         
         InstallButtonText = "Please wait ...";
@@ -234,9 +288,6 @@ public class PreChecksViewModel : ViewModelBase
         
         Log.Information($"Install Path: {FileHelper.GetRedactedPath(InstallPath)}");
 
-        // Fetched here so the choice exists before any task runs. ReleaseCheckTask reads the same
-        // cached file, so this costs one request rather than two.
-        Task.Run(LoadChannelsAsync);
         
         if (data.OriginalGamePath == data.TargetInstallPath)
         {
@@ -339,67 +390,34 @@ public class PreChecksViewModel : ViewModelBase
         {
             NavigateTo(new InstallViewModel(HostScreen));
         });
+
+        ChangeInstallPathCommand = ReactiveCommand.Create(() =>
+        {
+            installer.RecheckRequested -= ReCheckRequested;
+            NavigateTo(new InstallPathSelectionViewModel(HostScreen, InstallPath, autoAdvance: false));
+        });
         
         Task.Run(async () =>
         {
-            // run prechecks
-            var result = await installer.RunPreChecks();
-            
-            // get latest spt version
             InstallButtonText = "Getting latest release ...";
             InstallButtonCheckState = StatusSpinner.SpinnerState.Running;
-            
-            var progress = new Progress<double>((d) => { });
 
-            ReleaseInfo? sptReleaseInfo = null;
-            var retries = 1;
+            // The selected release decides which runtimes the checks look for, so the version list loads first.
+            // ReleaseCheckTask reads the same cached file.
+            await LoadChannelsAsync();
 
-            while (retries >= 0)
+            var result = await installer.RunPreChecks();
+            _channelsLoaded = true;
+            SelectFirstFailedCheck();
+
+            if (_installButtonRelease == null)
             {
-                retries--;
-                
-                try
-                {
-                    var sptReleaseInfoFile =
-                        await DownloadCacheHelper.GetOrDownloadFileAsync("release.json", DownloadCacheHelper.ReleaseUrls,
-                            progress, DownloadCacheHelper.SuggestedTtl);
-            
-                    if (sptReleaseInfoFile == null)
-                    {
-                        InstallButtonText = "Could not get release metadata";
-                        InstallButtonCheckState = StatusSpinner.SpinnerState.Error;
-                        return;
-                    }
-                    
-                    var manifest =
-                        JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(sptReleaseInfoFile.FullName), JsonOptions.Default);
-
-                    // The button names whatever the user picked, falling back to the newest published.
-                    sptReleaseInfo = SelectedChannel?.Release ?? manifest?.Releases?.FirstOrDefault();
-
-                    if (sptReleaseInfo != null)
-                    {
-                        break;
-                    }
-                }
-                catch (Exception)
-                {
-                    DownloadCacheHelper.ClearMetadataCache();
-                }
-            }
-
-            if (sptReleaseInfo == null)
-            {
-                InstallButtonText = "Could not parse latest release";
+                InstallButtonText = "Could not get release metadata";
                 InstallButtonCheckState = StatusSpinner.SpinnerState.Error;
                 return;
             }
-            
-            InstallButtonText = $"Start Install: v{sptReleaseInfo.SPTVersion}";
-            _installButtonRelease = sptReleaseInfo;
-            InstallButtonCheckState = StatusSpinner.SpinnerState.OK;
-            
-            AllowInstall = result.Succeeded;
+
+            UpdateInstallButton(result.Succeeded);
         });
         
         Task.Run(() =>

@@ -111,7 +111,10 @@ public abstract class PreCheckBase : ReactiveObject, IPreCheck
     
     public async Task<IResult> RunCheck()
     {
-        State = StatusSpinner.SpinnerState.Running;
+        if (State == StatusSpinner.SpinnerState.Pending)
+        {
+            State = StatusSpinner.SpinnerState.Running;
+        }
         
         var result = await CheckOperation();
         
