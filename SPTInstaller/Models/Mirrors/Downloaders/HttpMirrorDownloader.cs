@@ -9,13 +9,6 @@ public class HttpMirrorDownloader : MirrorDownloaderBase
     {
     }
     
-    public override async Task<FileInfo?> Download(IProgress<double> progress)
-    {
-        var file = await DownloadCacheHelper.DownloadFileAsync("patcher", [MirrorInfo.Link], progress);
-        
-        if (file == null)
-            return null;
-        
-        return FileHashHelper.CheckHash(file, MirrorInfo.Hash) ? file : null;
-    }
+    public override Task<FileInfo?> Download(IProgress<double> progress)
+        => DownloadCacheHelper.DownloadFileAsync("patcher", [MirrorInfo.Link], progress);
 }

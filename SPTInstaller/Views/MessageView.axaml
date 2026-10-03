@@ -26,14 +26,21 @@
                        HorizontalAlignment="Center" />
         </Label>
 
-        <Button Grid.Column="1" Grid.Row="3"
-                Content="Close" Command="{Binding CloseCommand}"
-                FontSize="15" FontWeight="SemiBold"
-                Classes.yellow="{Binding !HasErrors}"
-                IsVisible="{Binding ShowCloseButton}"
-                HorizontalAlignment="Center"
-                VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                Padding="20 10" />
+        <StackPanel Grid.Column="1" Grid.Row="3" Orientation="Horizontal" Spacing="10"
+                    HorizontalAlignment="Center">
+            <Button Content="{Binding RetryText}" Command="{Binding RetryCommand}"
+                    FontSize="15" FontWeight="SemiBold"
+                    Classes="yellow"
+                    IsVisible="{Binding RetryText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                    Padding="20 10" />
+            <Button Content="Close" Command="{Binding CloseCommand}"
+                    FontSize="15" FontWeight="SemiBold"
+                    Classes.yellow="{Binding !HasErrors}"
+                    IsVisible="{Binding ShowCloseButton}"
+                    VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                    Padding="20 10" />
+        </StackPanel>
         
         <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Spacing="10">
             <CheckBox IsChecked="{Binding OpenInstallFolder}" Content="Open Install Folder" IsVisible="{Binding ShowOptions}"/>

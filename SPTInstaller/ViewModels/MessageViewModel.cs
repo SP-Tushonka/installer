@@ -50,6 +50,20 @@ public class MessageViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _showOptions, value);
     }
     
+    private string? _retryText;
+
+    public string? RetryText
+    {
+        get => _retryText;
+        set => this.RaiseAndSetIfChanged(ref _retryText, value);
+    }
+
+    public ICommand RetryCommand { get; set; } = ReactiveCommand.Create(() =>
+    {
+        var data = ServiceHelper.Get<InternalData>();
+        App.ReLaunch(data.DebugMode, data.TargetInstallPath ?? "");
+    });
+
     private string _cacheInfoText;
     
     public string CacheInfoText
@@ -212,7 +226,8 @@ public class MessageViewModel : ViewModelBase
         }
         
         HasErrors = true;
-        
+        RetryText = (result as Result)?.RetryText;
+
         if (!noLog)
             Log.Error(Message);
     }

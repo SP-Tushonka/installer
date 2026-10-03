@@ -82,16 +82,46 @@ public class DownloadTask : InstallerTaskBase
             return Result.FromSuccess();
         }
         
+        var verificationFailed = false;
+
         foreach (var mirror in _mirrors)
         {
             SetStatus("Downloading Patcher", mirror.MirrorInfo.Link, progressStyle: ProgressStyle.Indeterminate);
-            
-            _data.PatcherZipInfo = await mirror.Download(progress);
-            
-            if (_data.PatcherZipInfo != null)
+
+            var file = await mirror.Download(progress);
+
+            if (file == null)
             {
+                continue;
+            }
+
+            SetStatus(null, "Verifying downloaded patcher ...", progressStyle: ProgressStyle.Indeterminate);
+
+            if (FileHashHelper.CheckHash(file, mirror.MirrorInfo.Hash))
+            {
+                _data.PatcherZipInfo = file;
                 return Result.FromSuccess();
             }
+
+            verificationFailed = true;
+
+            try
+            {
+                file.Delete();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Could not remove the corrupted patcher");
+            }
+        }
+
+        if (verificationFailed)
+        {
+            return Result.FromRetryableError(
+                "The patcher downloaded but failed verification\n\n" +
+                "This usually means the download was damaged on this PC. " +
+                "If redownloading keeps failing, try pausing your antivirus or use a VPN",
+                "Redownload patcher");
         }
 
         return await DownloadFailed("the patcher", _mirrors.Select(mirror => mirror.MirrorInfo.Link).ToList());
