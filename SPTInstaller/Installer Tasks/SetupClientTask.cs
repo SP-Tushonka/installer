@@ -1,4 +1,4 @@
-using SPTInstaller.Interfaces;
+﻿using SPTInstaller.Interfaces;
 using SPTInstaller.Models;
 using System.Linq;
 using System.Threading.Tasks;
@@ -22,6 +22,15 @@ public class SetupClientTask : InstallerTaskBase
         var patcherOutputDir = new DirectoryInfo(Path.Join(_data.TargetInstallPath, "patcher"));
         
         var patcherEXE = new FileInfo(Path.Join(_data.TargetInstallPath, "patcher.exe"));
+
+        var patchesDir = new DirectoryInfo(Path.Join(_data.TargetInstallPath, "SPT_Patches"));
+
+        var patcherLog = Path.Join(_data.TargetInstallPath, "patcher.log");
+
+        foreach (var staleLog in Directory.GetFiles(_data.TargetInstallPath, "patcher-*.log"))
+        {
+            File.Delete(staleLog);
+        }
         
         var progress = new Progress<double>((d) => { SetStatus(null, null, (int)Math.Floor(d)); });
         
@@ -32,20 +41,25 @@ public class SetupClientTask : InstallerTaskBase
             return Result.FromError("Failed to prepare 7z");
         }
         
-        if (_data.PatchNeeded)
+        for (var i = 0; i < _data.PatcherZips.Count; i++)
         {
-            // extract patcher files
-            SetStatus("Extracting Patcher", "", 0);
+            var step = _data.PatcherZips.Count > 1 ? $" {i + 1}/{_data.PatcherZips.Count}" : "";
+
+            SetStatus($"Extracting Patcher{step}", "", 0);
+
+            if (patcherOutputDir.Exists)
+            {
+                patcherOutputDir.Delete(true);
+            }
             
-            var extractPatcherResult = ZipHelper.Decompress(_data.PatcherZipInfo, patcherOutputDir, progress);
+            var extractPatcherResult = ZipHelper.Decompress(_data.PatcherZips[i], patcherOutputDir, progress);
             
             if (!extractPatcherResult.Succeeded)
             {
                 return extractPatcherResult;
             }
             
-            // copy patcher files to install directory
-            SetStatus("Copying Patcher", "", 0);
+            SetStatus($"Copying Patcher{step}", "", 0);
             
             var patcherDirInfo =
                 patcherOutputDir.GetDirectories("Patcher*", SearchOption.TopDirectoryOnly).FirstOrDefault()
@@ -59,14 +73,27 @@ public class SetupClientTask : InstallerTaskBase
                 return copyPatcherResult;
             }
             
-            // run patcher
-            SetStatus("Running Patcher", "", null, ProgressStyle.Indeterminate);
+            SetStatus($"Running Patcher{step}", "", null, ProgressStyle.Indeterminate);
             
             var patchingResult = ProcessHelper.PatchClientFiles(patcherEXE, targetInstallDirInfo);
             
             if (!patchingResult.Succeeded)
             {
                 return patchingResult;
+            }
+
+            // The next step's patcher must only find its own patches
+            patchesDir.Refresh();
+
+            if (patchesDir.Exists)
+            {
+                patchesDir.Delete(true);
+            }
+
+            // Each patcher writes patcher.log, so an earlier step's log is kept under its step number
+            if (i < _data.PatcherZips.Count - 1 && File.Exists(patcherLog))
+            {
+                File.Move(patcherLog, Path.Join(_data.TargetInstallPath, $"patcher-{i + 1}.log"), true);
             }
         }
         

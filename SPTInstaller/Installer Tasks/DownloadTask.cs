@@ -6,25 +6,21 @@ using System.Linq;
 using System.Threading.Tasks;
 using SPTInstaller.Helpers;
 using SPTInstaller.Models.Mirrors;
-using SPTInstaller.Models.Mirrors.Downloaders;
-using Serilog;
 
 namespace SPTInstaller.Installer_Tasks;
 
 public class DownloadTask : InstallerTaskBase
 {
     private InternalData _data;
-    private List<IMirrorDownloader> _mirrors = new List<IMirrorDownloader>();
-    private string _expectedPatcherHash = "";
     
     public DownloadTask(InternalData data) : base("Download Files")
     {
         _data = data;
     }
     
-    private async Task<IResult> BuildMirrorList()
+    private async Task<(List<PatchInfoMirror>? Mirrors, IResult? Error)> SelectMirrors(PatchInfo patch)
     {
-        var mirrors = _data.PatchInfo.Mirrors;
+        var mirrors = patch.Mirrors;
         var selectedName = _data.SelectedChannel?.MirrorName;
 
         // A chosen mirror is honoured exactly, so a failure is reported rather than quietly served
@@ -36,20 +32,13 @@ public class DownloadTask : InstallerTaskBase
 
             if (mirrors.Count == 0)
             {
-                return Result.FromError($"No patch mirror named '{selectedName}' is published for this release.");
+                return (null, Result.FromError($"No patch mirror named '{selectedName}' is published for this release."));
             }
         }
 
-        foreach (var mirror in await HostReachability.KeepReachableAsync(mirrors, mirror => mirror.Link))
-        {
-            _expectedPatcherHash = mirror.Hash;
-
-            _mirrors.Add(new HttpMirrorDownloader(mirror));
-        }
-
-        return Result.FromSuccess("Mirrors list ready");
+        return (await HostReachability.KeepReachableAsync(mirrors, mirror => mirror.Link), null);
     }
-    
+
     private static string HostOf(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : url;
 
@@ -70,77 +59,57 @@ public class DownloadTask : InstallerTaskBase
             "If you chose a specific option in the version list, try another one. Otherwise check your internet connection, VPN or firewall.");
     }
 
-    private async Task<IResult> DownloadPatcherFromMirrors(IProgress<double> progress)
+    private async Task<IResult> DownloadPatcherAsync(PatchInfo patch, int step, int steps, IProgress<double> progress)
     {
-        SetStatus("Downloading Patcher", "Verifying cached patcher ...", progressStyle: ProgressStyle.Indeterminate);
-        
-        if (DownloadCacheHelper.CheckCacheHash("patcher", _expectedPatcherHash, out var cacheFile))
+        var title = steps > 1 ? $"Downloading Patcher {step}/{steps}" : "Downloading Patcher";
+        var (mirrors, error) = await SelectMirrors(patch);
+
+        if (error != null)
         {
-            _data.PatcherZipInfo = cacheFile;
-            Log.Information("Using cached file {fileName} - Hash: {hash}", _data.PatcherZipInfo.Name,
-                _expectedPatcherHash);
-            return Result.FromSuccess();
+            return error;
         }
-        
-        var verificationFailed = false;
 
-        foreach (var mirror in _mirrors)
+        var links = mirrors!.Select(mirror => mirror.Link).ToList();
+        var spec = DownloadSpec.From(patch.Sha256, mirrors[0].Hash, patch.Size, patch.ChunkSize, patch.ChunkHashes);
+
+        SetStatus(title, "Verifying cached patcher ...", progressStyle: ProgressStyle.Indeterminate);
+
+        var download = await DownloadCacheHelper.GetOrDownloadFileAsync(
+            DownloadCacheHelper.PatcherFileName(patch.SourceClientVersion, patch.TargetClientVersion), links, spec, progress,
+            status => SetStatus(null, status, noLog: true));
+
+        switch (download.Outcome)
         {
-            SetStatus("Downloading Patcher", mirror.MirrorInfo.Link, progressStyle: ProgressStyle.Indeterminate);
-
-            var file = await mirror.Download(progress);
-
-            if (file == null)
-            {
-                continue;
-            }
-
-            SetStatus(null, "Verifying downloaded patcher ...", progressStyle: ProgressStyle.Indeterminate);
-
-            if (FileHashHelper.CheckHash(file, mirror.MirrorInfo.Hash))
-            {
-                _data.PatcherZipInfo = file;
+            case DownloadOutcome.Downloaded:
+                _data.PatcherZips.Add(download.File!);
                 return Result.FromSuccess();
-            }
-
-            verificationFailed = true;
-
-            try
-            {
-                file.Delete();
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Could not remove the corrupted patcher");
-            }
+            case DownloadOutcome.Corrupted:
+                // A patch regenerated after mirrors.json was cached fails every hash, so the retry must fetch fresh metadata
+                DownloadCacheHelper.ClearMetadataCache();
+                return Result.FromRetryableError(
+                    "The patcher downloaded but kept failing verification, so it was discarded.\n\n" +
+                    "This usually means the download was damaged on this PC. " +
+                    "If redownloading keeps failing, try pausing your antivirus or disabling a RAM overclock (XMP/EXPO).",
+                    "Redownload patcher");
+            default:
+                return await DownloadFailed("the patcher", links);
         }
-
-        if (verificationFailed)
-        {
-            return Result.FromRetryableError(
-                "The patcher downloaded but failed verification\n\n" +
-                "This usually means the download was damaged on this PC. " +
-                "If redownloading keeps failing, try pausing your antivirus or use a VPN",
-                "Redownload patcher");
-        }
-
-        return await DownloadFailed("the patcher", _mirrors.Select(mirror => mirror.MirrorInfo.Link).ToList());
     }
     
     private async Task<IResult> DownloadSPTFromMirrors(IProgress<double> progress)
     {
         var mirrors = await HostReachability.KeepReachableAsync(_data.ReleaseInfo.Mirrors, mirror => mirror.DownloadUrl);
 
-        // Note that GetOrDownloadFileAsync handles the cached file hash check, so we don't need to check it first
         foreach (var mirror in mirrors)
         {
             SetStatus("Downloading", mirror.DownloadUrl, progressStyle: ProgressStyle.Indeterminate);
-            
-            _data.SPTZipInfo =
-                await DownloadCacheHelper.GetOrDownloadFileAsync("SPT", mirror.DownloadUrl, progress, mirror.Hash);
-            
-            if (_data.SPTZipInfo != null)
+
+            var download = await DownloadCacheHelper.GetOrDownloadFileAsync("SPT", [mirror.DownloadUrl],
+                DownloadSpec.From(mirror.Sha256, mirror.Hash), progress, status => SetStatus(null, status, noLog: true));
+
+            if (download.Outcome == DownloadOutcome.Downloaded)
             {
+                _data.SPTZipInfo = download.File!;
                 return Result.FromSuccess();
             }
         }
@@ -151,23 +120,16 @@ public class DownloadTask : InstallerTaskBase
     public override async Task<IResult> TaskOperation()
     {
         var progress = new Progress<double>((d) => { SetStatus(null, null, (int)Math.Floor(d)); });
-        
-        if (_data.PatchNeeded)
+
+        _data.PatcherZips.Clear();
+
+        for (var i = 0; i < _data.PatchChain.Count; i++)
         {
-            var buildResult = await BuildMirrorList();
-            
-            if (!buildResult.Succeeded)
+            var result = await DownloadPatcherAsync(_data.PatchChain[i], i + 1, _data.PatchChain.Count, progress);
+
+            if (!result.Succeeded)
             {
-                return buildResult;
-            }
-            
-            SetStatus(null, null, 0);
-            
-            var patcherDownloadRresult = await DownloadPatcherFromMirrors(progress);
-            
-            if (!patcherDownloadRresult.Succeeded)
-            {
-                return patcherDownloadRresult;
+                return result;
             }
         }
         

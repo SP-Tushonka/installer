@@ -6,6 +6,7 @@ using System.Linq;
 using SPTInstaller.Models.Mirrors;
 using SPTInstaller.Models.ReleaseInfo;
 using System.Text.Json;
+using Serilog;
 
 namespace SPTInstaller.Installer_Tasks;
 
@@ -27,7 +28,7 @@ public class ReleaseCheckTask : InstallerTaskBase
             var progress = new Progress<double>((d) => { SetStatus(null, null, (int)Math.Floor(d)); });
             
             ReleaseInfo? sptReleaseInfo = null;
-            PatchInfo? patchMirrorInfo = null;
+            PatchManifest? patchManifest = null;
             
             int retries = 1;
 
@@ -60,17 +61,11 @@ public class ReleaseCheckTask : InstallerTaskBase
                     var releaseManifest =
                         JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(sptReleaseInfoFile.FullName), JsonOptions.Default);
 
-                    var patchManifest =
+                    patchManifest =
                         JsonSerializer.Deserialize<PatchManifest>(File.ReadAllText(sptPatchMirrorsFile.FullName), JsonOptions.Default);
 
                     // Nothing chosen yet means the first published release, which is the newest.
                     sptReleaseInfo = _data.SelectedChannel?.Release ?? releaseManifest?.Releases?.FirstOrDefault();
-
-                    // The patch is the one that lands on the release's client, not whatever was published last.
-                    patchMirrorInfo = patchManifest?.Patches?.FirstOrDefault(patch =>
-                        sptReleaseInfo != null
-                        && int.TryParse(sptReleaseInfo.ClientVersion, out var releaseClient)
-                        && patch.TargetClientVersion == releaseClient);
 
                     break;
                 }
@@ -89,55 +84,33 @@ public class ReleaseCheckTask : InstallerTaskBase
                 }
             }
 
-            if (sptReleaseInfo == null || patchMirrorInfo == null)
+            if (sptReleaseInfo == null || patchManifest == null)
             {
                 return Result.FromError(
                     "Release or mirror info was null. If you are seeing this report it. This should never be hit");
             }
 
             _data.ReleaseInfo = sptReleaseInfo;
-            _data.PatchInfo = patchMirrorInfo;
             int intSPTVersion = int.Parse(sptReleaseInfo.ClientVersion);
             int intGameVersion = int.Parse(_data.OriginalGameVersion);
-            
-            // note: it's possible the game version could be lower than the SPT version and still need a patch if the major version numbers change
-            //     : it's probably a low chance though
-            bool patchNeedCheck = intGameVersion > intSPTVersion;
             
             if (intGameVersion < intSPTVersion)
             {
                 return Result.FromError("Your live game is out of date. Please update it using the game's launcher and try running the installer again");
             }
-            
-            if (intGameVersion == intSPTVersion)
-            {
-                patchNeedCheck = false;
-            }
-            
-            /*
-              An example of the logic going on here because holy shit I can't keep track of why we do it this way -waffle.lazy
-              ----    Example data    ----
-              gameVersion         : 32738
-              sptVersion          : 30626
-              SourceClientVersion : 32678
-              TargetClientVersion : 30626
-              patchNeeded         : true
-              ----------------------------
-              
-              * spt client is 'outdated' if the game and target versions don't match
-              * or
-              * the game version is behind the mirror's source client version
-              sptClientIsOutdated  = (30626 != 30626 || 32738 > 32678) && true
-              
-              * otherwise, if the game version doesn't match the mirror's source version, we assume live is outdated 
-              liveClientIsOutdated = 32738 != 32678 && true
-             */
 
-            bool sptClientIsOutdated = (intSPTVersion != patchMirrorInfo.TargetClientVersion || intGameVersion > patchMirrorInfo.SourceClientVersion) && patchNeedCheck;
-            bool liveClientIsOutdated = intGameVersion != patchMirrorInfo.SourceClientVersion && patchNeedCheck;
-            
-            if (sptClientIsOutdated)
+            _data.PatchChain = intGameVersion == intSPTVersion
+                ? []
+                : patchManifest.FindPath(intGameVersion, intSPTVersion) ?? [];
+
+            if (intGameVersion != intSPTVersion && _data.PatchChain.Count == 0)
             {
+                // Patches start from the newest live client, so one starting past the user's means their game is behind.
+                if (patchManifest.Patches.Any(patch => patch.SourceClientVersion > intGameVersion))
+                {
+                    return Result.FromError("Your live game is out of date. Please update it using the game's launcher or Steam, then run the installer again.");
+                }
+
                 return Result.FromError(
                     "The game has updated. The patcher needs to be updated before you can install." +
                     "\n* There is no time frame provided as to when this will occur. It usually happens within 24 hours." +
@@ -146,12 +119,11 @@ public class ReleaseCheckTask : InstallerTaskBase
                     "\n* The patcher is only for turning game files into the older version this install needs.");
             }
 
-            if (liveClientIsOutdated)
+            if (_data.PatchChain.Count > 1)
             {
-                return Result.FromError("Your live game is out of date. Please update it using the game's launcher or Steam, then run the installer again.");
+                Log.Information("Patching through {chain}",
+                    string.Join(" -> ", _data.PatchChain.Select(patch => patch.SourceClientVersion).Append(intSPTVersion)));
             }
-            
-            _data.PatchNeeded = patchNeedCheck;
             
             string status =
                 $"Current Release: {sptReleaseInfo.ClientVersion} - {(_data.PatchNeeded ? "Patch Available" : "No Patch Needed")}";

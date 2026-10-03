@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using SPTInstaller.Models.Mirrors;
 using SPTInstaller.Models.ReleaseInfo;
 
@@ -22,9 +23,9 @@ public class InternalData
     public string OriginalGameVersion { get; set; }
     
     /// <summary>
-    /// Patcher zip file info
+    /// Patcher archives, one per step of <see cref="PatchChain"/>
     /// </summary>
-    public FileInfo PatcherZipInfo { get; set; }
+    public List<FileInfo> PatcherZips { get; } = [];
     
     /// <summary>
     /// SPT zip file info
@@ -36,7 +37,10 @@ public class InternalData
     /// </summary>
     public ReleaseInfo.ReleaseInfo ReleaseInfo { get; set; }
     
-    public PatchInfo PatchInfo { get; set; }
+    /// <summary>
+    /// The patches that turn the live client into the release's client, applied in order
+    /// </summary>
+    public List<PatchInfo> PatchChain { get; set; } = [];
 
     /// <summary>
     /// Which published release the user picked, and whether to prefer the main download or the mirror.
@@ -44,12 +48,7 @@ public class InternalData
     public InstallChannel SelectedChannel { get; set; }
     
     /// <summary>
-    /// The release download link for the patcher mirror list
-    /// </summary>
-    // public string PatcherMirrorsLink { get; set; }
-    
-    /// <summary>
     /// Whether or not a patch is needed to downgrade the client files
     /// </summary>
-    public bool PatchNeeded { get; set; }
+    public bool PatchNeeded => PatchChain.Count > 0;
 }

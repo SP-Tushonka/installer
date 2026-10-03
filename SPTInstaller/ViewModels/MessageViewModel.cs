@@ -125,6 +125,17 @@ public class MessageViewModel : ViewModelBase
                 {
                     filesToCopy.Add(patcherLogFile);
                 }
+
+                if (Directory.Exists(data.TargetInstallPath))
+                {
+                    foreach (var path in Directory.GetFiles(data.TargetInstallPath, "patcher-*.log"))
+                    {
+                        if (await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(path) is { } stepLog)
+                        {
+                            filesToCopy.Add(stepLog);
+                        }
+                    }
+                }
                 
                 await desktop.MainWindow.Clipboard.SetFilesAsync(filesToCopy);
                 ClipCommandText = "Copied!";

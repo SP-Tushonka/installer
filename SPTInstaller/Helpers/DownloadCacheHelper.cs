@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Serilog;
@@ -19,9 +20,14 @@ public static class DownloadCacheHelper
 
     private const string VersionMarkerFileName = ".installer-version";
 
+    private static readonly TimeSpan ResumableLifetime = TimeSpan.FromDays(7);
+
     public static TimeSpan SuggestedTtl = TimeSpan.FromHours(1);
     public static string CachePath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "spt-installer/cache");
+
+    public static string PatcherFileName(int sourceClientVersion, int targetClientVersion)
+        => $"patcher-{sourceClientVersion}-{targetClientVersion}";
     
     private const string PrimaryHost = "https://patcher.sp-tushonka.com";
     private const string FallbackHost = "https://mirror.sp-tushonka.com";
@@ -94,7 +100,7 @@ public static class DownloadCacheHelper
     }
 
     /// <summary>
-    /// Removes scratch files left behind by downloads that were killed mid-flight
+    /// Removes scratch files left behind by downloads that were killed mid-flight, and resumable ones gone stale
     /// </summary>
     public static void ClearPartialDownloads()
     {
@@ -103,7 +109,14 @@ public static class DownloadCacheHelper
             return;
         }
 
-        foreach (var file in new DirectoryInfo(CachePath).GetFiles("*.tmp", SearchOption.TopDirectoryOnly))
+        var cache = new DirectoryInfo(CachePath);
+
+        // Resumable parts outlive a version switch so switching back loses nothing, an abandoned one is dropped after a week
+        var stale = cache.GetFiles("*.tmp", SearchOption.TopDirectoryOnly)
+            .Concat(cache.GetFiles("*.part", SearchOption.TopDirectoryOnly)
+                .Where(file => DateTime.Now - file.LastWriteTime > ResumableLifetime));
+
+        foreach (var file in stale)
         {
             try
             {
@@ -149,13 +162,13 @@ public static class DownloadCacheHelper
     /// Check if a file in the cache already exists
     /// </summary>
     /// <param name="fileName">The name of the file to check for</param>
-    /// <param name="expectedHash">The expected hash of the file in the cache</param>
+    /// <param name="spec">The hash the file in the cache must match</param>
     /// <param name="cachedFile">The file found in the cache; null if no file is found</param>
     /// <returns>True if the file is in the cache and its hash matches the expected hash, otherwise false</returns>
-    public static bool CheckCacheHash(string fileName, string expectedHash, out FileInfo cachedFile)
-        => CheckCacheHash(new FileInfo(Path.Join(CachePath, fileName)), expectedHash, out cachedFile);
+    public static bool CheckCacheHash(string fileName, DownloadSpec spec, out FileInfo cachedFile)
+        => CheckCacheHash(new FileInfo(Path.Join(CachePath, fileName)), spec, out cachedFile);
     
-    private static bool CheckCacheHash(FileInfo cacheFile, string expectedHash, out FileInfo fileInCache)
+    private static bool CheckCacheHash(FileInfo cacheFile, DownloadSpec spec, out FileInfo fileInCache)
     {
         fileInCache = cacheFile;
         
@@ -164,14 +177,14 @@ public static class DownloadCacheHelper
             cacheFile.Refresh();
             Directory.CreateDirectory(CachePath);
             
-            if (!cacheFile.Exists || expectedHash == null)
+            if (!cacheFile.Exists)
             {
-                Log.Information($"{cacheFile.Name} {(cacheFile.Exists ? "is in cache" : "NOT in cache")}");
-                Log.Information($"Expected hash: {(expectedHash == null ? "not provided" : expectedHash)}");
+                Log.Information($"{cacheFile.Name} NOT in cache");
+                Log.Information($"Expected {spec.Algorithm.Name} hash: {Convert.ToHexStringLower(spec.Digest)}");
                 return false;
             }
             
-            if (FileHashHelper.CheckHash(cacheFile, expectedHash))
+            if (FileHashHelper.CheckHash(cacheFile, spec.Algorithm, spec.Digest))
             {
                 fileInCache = cacheFile;
                 Log.Information("Hashes MATCH");
@@ -366,9 +379,10 @@ public static class DownloadCacheHelper
     }
 
     // Only the HTTP stack's own failures are worth retrying over another route. A local file error is not.
-    // HttpIOException is how a connection dropped mid-body surfaces.
+    // HttpIOException is a connection dropped mid-body, and a TLS record failing to decrypt is an IOException over a Win32Exception.
     private static bool IsTransportFailure(Exception exception)
-        => exception is HttpRequestException or HttpIOException or TaskCanceledException;
+        => exception is HttpRequestException or HttpIOException or TaskCanceledException
+            or IOException { InnerException: System.ComponentModel.Win32Exception };
 
     /// <summary>
     /// Get or download a file using a time to live
@@ -399,29 +413,22 @@ public static class DownloadCacheHelper
     }
     
     /// <summary>
-    /// Get the file from cache or download it
+    /// Get the file from cache or download and verify it
     /// </summary>
     /// <param name="fileName">The name of the file to check for in the cache</param>
-    /// <param name="targetLink">The url to download from if the file doesn't exist in the cache</param>
+    /// <param name="targetLinks">The urls to download from if the file doesn't exist in the cache</param>
+    /// <param name="spec">The hashes the file must match</param>
     /// <param name="progress">A provider for progress updates</param>
-    /// <param name="expectedHash">The expected hash of the cached file</param>
-    /// <returns>A <see cref="FileInfo"/> object of the cached file</returns>
-    /// <remarks>Use <see cref="DownloadFileAsync(string, IReadOnlyList{string}, IProgress{double})"/> if you don't have an expected cache file hash</remarks>
-    public static async Task<FileInfo?> GetOrDownloadFileAsync(string fileName, string targetLink,
-        IProgress<double> progress, string expectedHash)
+    /// <param name="status">Receives what the download is doing, for the status line</param>
+    public static async Task<DownloadResult> GetOrDownloadFileAsync(string fileName, IReadOnlyList<string> targetLinks,
+        DownloadSpec spec, IProgress<double> progress, Action<string>? status = null)
     {
-        try
+        if (CheckCacheHash(fileName, spec, out var cacheFile))
         {
-            if (CheckCacheHash(fileName, expectedHash, out var cacheFile))
-                return cacheFile;
+            return new DownloadResult(DownloadOutcome.Downloaded, cacheFile);
+        }
 
-            Log.Information($"Downloading File: {targetLink}");
-            return await DownloadFileAsync(fileName, [targetLink], progress);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, $"Error while getting file: {fileName}");
-            return null;
-        }
+        Log.Information($"Downloading File: {targetLinks[0]}");
+        return await VerifiedDownloader.DownloadAsync(fileName, targetLinks, spec, progress, status);
     }
 }

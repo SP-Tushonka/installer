@@ -1,6 +1,7 @@
 ﻿using SPTInstaller.Helpers;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -111,8 +112,19 @@ public partial class WhyCacheThoughDialog : UserControl
             case 1:
                 try
                 {
-                    var cacheFilePath = Path.Join(DownloadCacheHelper.CachePath, "patcher");
-                    _foundPatcher?.MoveTo(cacheFilePath, true);
+                    var builds = Regex.Match(_foundPatcher!.Name, @"^Patcher_.*?\.(\d+)_to_.*?\.(\d+)\.7z$");
+
+                    if (!builds.Success)
+                    {
+                        AdditionalInfo = $"{_foundPatcher.Name} is not named like a patcher archive";
+                        AdditionalInfoColor = "red";
+                        return;
+                    }
+
+                    Directory.CreateDirectory(DownloadCacheHelper.CachePath);
+                    var cacheFilePath = Path.Join(DownloadCacheHelper.CachePath,
+                        DownloadCacheHelper.PatcherFileName(int.Parse(builds.Groups[1].Value), int.Parse(builds.Groups[2].Value)));
+                    _foundPatcher.MoveTo(cacheFilePath, true);
                     var message = "Patcher was moved into cache :D";
                     Log.Information($"[MV_1] {message}");
                     AdditionalInfo = message;

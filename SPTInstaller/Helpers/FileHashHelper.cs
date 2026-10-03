@@ -1,35 +1,27 @@
-﻿using System.Linq;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Serilog;
 
 namespace SPTInstaller.Helpers;
 
 public static class FileHashHelper
 {
-    // public static string? GetGiteaReleaseHash(Release release)
-    // {
-    //     var regex = Regex.Match(release.Body, @"Release Hash: (?<hash>\S+)");
-    //
-    //     if (regex.Success)
-    //     {
-    //         return regex.Groups["hash"].Value;
-    //     }
-    //
-    //     return null;
-    // }
-    
-    public static bool CheckHash(FileInfo file, string expectedHash)
+    public static bool CheckHash(FileInfo file, HashAlgorithmName algorithm, byte[] expectedHash)
     {
-        using var md5Service = MD5.Create();
+        using var hash = IncrementalHash.CreateHash(algorithm);
         using var sourceStream = file.OpenRead();
         
-        var sourceHash = md5Service.ComputeHash(sourceStream);
-        var expectedHashBytes = Convert.FromBase64String(expectedHash);
+        var buffer = new byte[1024 * 1024];
+        int read;
         
-        Log.Information($"Comparing Hashes :: S: {Convert.ToBase64String(sourceHash)} - E: {expectedHash}");
+        while ((read = sourceStream.Read(buffer)) > 0)
+        {
+            hash.AppendData(buffer, 0, read);
+        }
         
-        var matched = Enumerable.SequenceEqual(sourceHash, expectedHashBytes);
+        var sourceHash = hash.GetHashAndReset();
         
-        return matched;
+        Log.Information($"Comparing {algorithm.Name} Hashes :: S: {Convert.ToHexStringLower(sourceHash)} - E: {Convert.ToHexStringLower(expectedHash)}");
+        
+        return sourceHash.AsSpan().SequenceEqual(expectedHash);
     }
 }
