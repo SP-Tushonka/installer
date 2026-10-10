@@ -225,7 +225,7 @@ public class PreChecksViewModel : ViewModelBase
         });
     }
 
-    // Shows why install is blocked without making the user hunt for the red check
+    // Shows why install is blocked, or what deserves attention, without making the user hunt for it
     private void SelectFirstFailedCheck()
     {
         Dispatcher.UIThread.Post(() =>
@@ -235,7 +235,8 @@ public class PreChecksViewModel : ViewModelBase
                 return;
             }
 
-            var failed = PreChecks.FirstOrDefault(check => check.State == StatusSpinner.SpinnerState.Error);
+            var failed = PreChecks.FirstOrDefault(check => check.State == StatusSpinner.SpinnerState.Error)
+                         ?? PreChecks.FirstOrDefault(check => check.State == StatusSpinner.SpinnerState.Warning);
 
             if (failed != null)
             {
@@ -289,30 +290,6 @@ public class PreChecksViewModel : ViewModelBase
         Log.Information($"Install Path: {FileHelper.GetRedactedPath(InstallPath)}");
 
         
-        if (data.OriginalGamePath == data.TargetInstallPath)
-        {
-            Log.CloseAndFlush();
-            
-            var logFiles = Directory.GetFiles(InstallPath, "spt-installer_*.log");
-            
-            // remove log file from original game path if they exist
-            foreach (var file in logFiles)
-            {
-                try
-                {
-                    File.Delete(file);
-                }
-                catch
-                {
-                }
-            }
-            
-            NavigateTo(new MessageViewModel(HostScreen,
-                Result.FromError(
-                    "You have chosen to install in the same folder as the game. Please choose another folder. Refer to the install guide on where best to place the installer before running it."),
-                noLog: true));
-            return;
-        }
         
         Task.Run(async () =>
         {

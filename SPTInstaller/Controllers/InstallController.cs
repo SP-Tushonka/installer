@@ -68,7 +68,7 @@ public class InstallController
                 var result = await check.RunCheck();
 
                 Log.Information(
-                    $"PreCheck: {check.Name} ({(check.IsRequired ? "Required" : "Optional")}) -> {(result.Succeeded ? "Passed" : "Failed")}\nDetail: {check.PreCheckDetails.ReplaceLineEndings(" ")}");
+                    $"PreCheck: {check.Name} ({(check.IsRequired ? "Required" : "Optional")}) -> {(result.Succeeded ? (check.State == StatusSpinner.SpinnerState.Warning ? "Passed with a warning" : "Passed") : "Failed")}\nDetail: {check.PreCheckDetails.Replace("**", "").ReplaceLineEndings(" ")}");
 
                 if (check.IsRequired)
                 {

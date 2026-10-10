@@ -96,6 +96,7 @@ public abstract class PreCheckBase : ReactiveObject, IPreCheck
     private StatusSpinner.SpinnerState ProcessResult(PreCheckResult result) =>
         (result.Succeeded, IsRequired) switch
         {
+            (true, _) when result.IsWarning => StatusSpinner.SpinnerState.Warning,
             (true, _) => StatusSpinner.SpinnerState.OK,
             (false, false) => StatusSpinner.SpinnerState.Warning,
             (_, _) => StatusSpinner.SpinnerState.Error
@@ -130,7 +131,7 @@ public abstract class PreCheckBase : ReactiveObject, IPreCheck
         
         State = ProcessResult(result);
         
-        return State == StatusSpinner.SpinnerState.OK
+        return result.Succeeded
             ? Result.FromSuccess()
             : Result.FromError($"PreCheck Failed: {Name}");
     }

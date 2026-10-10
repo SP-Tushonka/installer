@@ -130,7 +130,9 @@ public class MessageViewModel : ViewModelBase
                 {
                     foreach (var path in Directory.GetFiles(data.TargetInstallPath, "patcher-*.log"))
                     {
-                        if (await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(path) is { } stepLog)
+                        var stepLog = await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(path);
+
+                        if (stepLog != null)
                         {
                             filesToCopy.Add(stepLog);
                         }

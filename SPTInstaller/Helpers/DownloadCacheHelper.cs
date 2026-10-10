@@ -26,6 +26,33 @@ public static class DownloadCacheHelper
     public static string CachePath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "spt-installer/cache");
 
+    /// <summary>
+    /// The size a host reports for a file without downloading it, tried over each route in turn
+    /// </summary>
+    public static async Task<long?> GetRemoteSizeAsync(string url)
+    {
+        foreach (var (mode, client) in Routes)
+        {
+            try
+            {
+                using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var request = new HttpRequestMessage(HttpMethod.Head, url);
+                using var response = await client.SendAsync(request, timeout.Token);
+
+                if (response.IsSuccessStatusCode && response.Content.Headers.ContentLength.HasValue)
+                {
+                    return response.Content.Headers.ContentLength.Value;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Could not get the size of {url} ({mode})", url, mode);
+            }
+        }
+
+        return null;
+    }
+
     public static string PatcherFileName(int sourceClientVersion, int targetClientVersion)
         => $"patcher-{sourceClientVersion}-{targetClientVersion}";
     

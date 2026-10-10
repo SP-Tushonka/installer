@@ -30,7 +30,14 @@ public class PreCheckResult : IResult
         ButtonPressedCommand = ReactiveCommand.Create(buttonPressedAction);
     }
     
+    /// <summary>
+    /// Passed, so it does not block installing, but shown in yellow because something deserves attention
+    /// </summary>
+    public bool IsWarning { get; private set; }
+
     public static PreCheckResult FromSuccess(string message = "") => new PreCheckResult(message, true, "", null);
+
+    public static PreCheckResult FromWarning(string message) => new PreCheckResult(message, true, "", null) { IsWarning = true };
     
     public static PreCheckResult FromError(string message, string actionButtonText = "",
         Action? actionButtonPressedAction = null) =>

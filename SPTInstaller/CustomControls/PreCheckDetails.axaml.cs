@@ -1,12 +1,24 @@
 ﻿using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using SPTInstaller.Models;
 
 namespace SPTInstaller.CustomControls;
 
 public partial class PreCheckDetails : UserControl
 {
+    static PreCheckDetails()
+    {
+        IsVisibleProperty.Changed.AddClassHandler<Grid>((grid, _) =>
+        {
+            if (grid.IsVisible && grid.Classes.Contains("precheck-details"))
+            {
+                grid.FindDescendantOfType<ScrollViewer>()?.ScrollToHome();
+            }
+        });
+    }
+
     public PreCheckDetails()
     {
         InitializeComponent();

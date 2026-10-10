@@ -25,7 +25,7 @@
 
                 <!-- info card vertical separator -->
                 <Rectangle Grid.Row="1" Grid.RowSpan="2" Grid.Column="2" VerticalAlignment="Stretch"
-                           Fill="black" Width="1" Margin="10 0" />
+                           Fill="Gray" Width="1" Margin="10 0" />
 
                 <!-- precheck list -->
                 <Grid Grid.Row="1" Grid.Column="3">
@@ -65,9 +65,10 @@
                 </ScrollViewer>
 
                 <!-- cache info -->
-                <cc:CacheInfo Grid.Row="3" Grid.Column="1" Padding="10"
-                              HorizontalAlignment="Left"
-                              InfoText="{Binding CacheInfoText}" State="{Binding CacheCheckState}" />
+                <Border Grid.Row="3" Grid.Column="1" BorderBrush="Gray" BorderThickness="0 1 0 0" Margin="10 4 0 0">
+                    <cc:CacheInfo Padding="0 6 0 0" HorizontalAlignment="Left"
+                                  InfoText="{Binding CacheInfoText}" State="{Binding CacheCheckState}" />
+                </Border>
 
             </Grid>
         </Border>

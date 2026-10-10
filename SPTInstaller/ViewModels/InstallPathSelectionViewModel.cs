@@ -14,6 +14,9 @@ namespace SPTInstaller.ViewModels;
 public class InstallPathSelectionViewModel : ViewModelBase
 {
     private InternalData _data;
+
+    // Read once, validation runs on every keystroke and detection goes through the registry
+    private readonly string? _gamePath;
     
     private string _selectedPath;
     
@@ -42,6 +45,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
     public InstallPathSelectionViewModel(IScreen host, string installPath, bool autoAdvance = true) : base(host)
     {
         _data = ServiceHelper.Get<InternalData?>() ?? throw new Exception("Failed to get internal data");
+        _gamePath = PreCheckHelper.DetectOriginalGamePath();
         SelectedPath = Environment.CurrentDirectory;
         ValidPath = false;
 
@@ -106,7 +110,25 @@ public class InstallPathSelectionViewModel : ViewModelBase
             ValidPath = false;
             return;
         }
-        
+
+        var selected = Path.TrimEndingDirectorySeparator(Path.GetFullPath(SelectedPath));
+        var game = _gamePath == null ? null : Path.TrimEndingDirectorySeparator(Path.GetFullPath(_gamePath));
+
+        if (game != null && string.Equals(selected, game, StringComparison.OrdinalIgnoreCase))
+        {
+            ErrorMessage = $"This is the game's own folder. Choose an empty folder instead, like {Path.GetPathRoot(SelectedPath)}SPT";
+            ValidPath = false;
+            return;
+        }
+
+        // The launcher's file check and updates can delete or overwrite an install that lives inside the game
+        if (game != null && selected.StartsWith(game + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            ErrorMessage = $"This is inside the game's folder. Choose an empty folder outside it, like {Path.GetPathRoot(SelectedPath)}SPT";
+            ValidPath = false;
+            return;
+        }
+
         if (FileHelper.CheckPathForProblemLocations(SelectedPath, out var failedCheck))
         {
             if (failedCheck.CheckType == PathCheckType.EndsWith)
@@ -157,7 +179,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
         
         _data.TargetInstallPath = SelectedPath;
         
-        _data.OriginalGamePath = PreCheckHelper.DetectOriginalGamePath();
+        _data.OriginalGamePath = _gamePath;
         
 #if !TEST
         if (_data.OriginalGamePath == null)
