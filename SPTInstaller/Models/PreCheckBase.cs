@@ -49,6 +49,17 @@ public abstract class PreCheckBase : ReactiveObject, IPreCheck
         set => this.RaiseAndSetIfChanged(ref _state, value);
     }
     
+    private string? _summary;
+
+    /// <summary>
+    /// A short value shown at the end of the check's row
+    /// </summary>
+    public string? Summary
+    {
+        get => _summary;
+        set => this.RaiseAndSetIfChanged(ref _summary, value);
+    }
+
     private string _preCheckDetails;
     
     public string PreCheckDetails

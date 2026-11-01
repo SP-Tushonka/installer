@@ -21,7 +21,7 @@ public static class PublicDns
     ];
 
     private static readonly HttpClient _client =
-        new(new SocketsHttpHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(10) };
+        DownloadCacheHelper.CreateClient(new SocketsHttpHandler { UseProxy = false }, TimeSpan.FromSeconds(10));
 
     public static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context,
         CancellationToken cancellationToken)

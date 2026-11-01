@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="SPTInstaller.CustomControls.PageHeader"
+             x:Name="Root">
+    <Border Background="{StaticResource Gray900Brush}" Padding="24 0" MinHeight="72">
+        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+            <PathIcon Data="{Binding #Root.Icon}" Foreground="{Binding #Root.IconBrush}"
+                      Width="18" Height="18" Margin="0 0 8 0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding #Root.Title}" FontSize="20" FontWeight="SemiBold"
+                       Foreground="{StaticResource Gray200Brush}" VerticalAlignment="Center" />
+            <Border Grid.Column="2" Classes="badge" Classes.danger="{Binding #Root.IsDanger}" Margin="10 0 0 0"
+                    IsVisible="{Binding #Root.BadgeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <TextBlock Text="{Binding #Root.BadgeText}" />
+            </Border>
+            <TextBlock Grid.Column="3" Text="{Binding #Root.Subtitle}" Classes="muted" Margin="10 0 0 0"
+                       VerticalAlignment="Center" />
+            <ContentPresenter Grid.Column="5" Content="{Binding #Root.Actions}" VerticalAlignment="Center" />
+        </Grid>
+    </Border>
+</UserControl>

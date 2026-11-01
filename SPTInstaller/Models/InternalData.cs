@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using SPTInstaller.Models.Mirrors;
-using SPTInstaller.Models.ReleaseInfo;
 
 namespace SPTInstaller.Models;
 
@@ -11,6 +10,11 @@ public class InternalData
     /// The folder to install SPT into
     /// </summary>
     public string? TargetInstallPath { get; set; }
+
+    /// <summary>
+    /// Save patches and the SPT zip in the install folder instead of the shared cache, deleted once installed
+    /// </summary>
+    public bool DownloadToInstallFolder { get; set; }
     
     /// <summary>
     /// The orginal EFT game path
@@ -23,9 +27,9 @@ public class InternalData
     public string OriginalGameVersion { get; set; }
     
     /// <summary>
-    /// Patcher archives, one per step of <see cref="PatchChain"/>
+    /// Downloaded patches, one per step of <see cref="PatchChain"/>
     /// </summary>
-    public List<FileInfo> PatcherZips { get; } = [];
+    public List<PatchDownload> Patches { get; } = [];
     
     /// <summary>
     /// SPT zip file info

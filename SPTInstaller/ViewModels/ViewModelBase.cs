@@ -1,6 +1,5 @@
 ﻿using Avalonia.Threading;
 using ReactiveUI;
-using System.Threading.Tasks;
 
 namespace SPTInstaller.ViewModels;
 
@@ -11,33 +10,13 @@ public class ViewModelBase : ReactiveObject, IActivatableViewModel, IRoutableVie
     public string? UrlPathSegment => Guid.NewGuid().ToString().Substring(0, 7);
     
     public IScreen HostScreen { get; }
-    
+
     /// <summary>
-    /// Delay the return of the viewmodel
+    /// Where this screen sits in the title bar's steps
     /// </summary>
-    /// <param name="Milliseconds">The amount of time in milliseconds to delay</param>
-    /// <returns>The viewmodel after the delay time</returns>
-    /// <remarks>Useful to delay the navigation to another view. For instance, to allow an animation to complete.</remarks>
-    private async Task<ViewModelBase> WithDelay(int Milliseconds)
-    {
-        await Task.Delay(Milliseconds);
-        
-        return this;
-    }
-    
-    /// <summary>
-    /// Navigate to another viewmodel after a delay
-    /// </summary>
-    /// <param name="ViewModel"></param>
-    /// <param name="Milliseconds"></param>
-    /// <returns></returns>
-    public async Task NavigateToWithDelay(ViewModelBase ViewModel, int Milliseconds)
-    {
-        await Dispatcher.UIThread.InvokeAsync(async () =>
-        {
-            HostScreen.Router.Navigate.Execute(await ViewModel.WithDelay(Milliseconds)).Subscribe();
-        });
-    }
+    public virtual Models.InstallerStep Step => Models.InstallerStep.Start;
+
+    public virtual bool StepFailed => false;
     
     /// <summary>
     /// Navigate to another viewmodel

@@ -28,6 +28,15 @@ public partial class PreCheckItem : UserControl
     
     public static readonly StyledProperty<bool> IsRequiredProperty =
         AvaloniaProperty.Register<PreCheckItem, bool>(nameof(IsRequired));
+
+    public string? Summary
+    {
+        get => GetValue(SummaryProperty);
+        set => SetValue(SummaryProperty, value);
+    }
+
+    public static readonly StyledProperty<string?> SummaryProperty =
+        AvaloniaProperty.Register<PreCheckItem, string?>(nameof(Summary));
     
     public StatusSpinner.SpinnerState State
     {

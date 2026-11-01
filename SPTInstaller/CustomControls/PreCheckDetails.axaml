@@ -3,22 +3,40 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:model="using:SPTInstaller.Models"
+             xmlns:cc="using:SPTInstaller.CustomControls"
              xmlns:cvt="using:SPTInstaller.Converters"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="300"
              x:Class="SPTInstaller.CustomControls.PreCheckDetails">
 
     <UserControl.Resources>
-        <cvt:StateSpinnerStateToColorConverter x:Key="colorConverter" />
         <cvt:BoldMarkupConverter x:Key="boldMarkup" />
+        <cvt:StatusSpinnerIsStateConverter x:Key="isState" />
     </UserControl.Resources>
+    <UserControl.Styles>
+        <Style Selector="Border.details">
+            <Setter Property="Background" Value="{StaticResource Gray950Brush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.details.warning">
+            <Setter Property="Background" Value="{StaticResource NoticeBrush}" />
+        </Style>
+        <Style Selector="Border.details.error">
+            <Setter Property="Background" Value="{StaticResource DangerCardBrush}" />
+        </Style>
+        <Style Selector="Border.details TextBlock.text">
+            <Setter Property="Foreground" Value="{StaticResource Gray300Brush}" />
+        </Style>
+        <Style Selector="Border.details.warning TextBlock.text, Border.details.error TextBlock.text">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <!-- The amber and red icons vanish on a card of the same colour, which already says the state -->
+        <Style Selector="Border.details.warning cc|StatusSpinner, Border.details.error cc|StatusSpinner">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+    </UserControl.Styles>
 
     <Panel>
-        <!-- show when nothing is selected  -->
-        <Label Content="Select a Pre-Check to see more info" FontSize="20"
-               HorizontalAlignment="Center" VerticalAlignment="Center"
-               IsVisible="{Binding HasSelection, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={x:Static BoolConverters.Not}}" />
-
-        <ItemsControl ItemsSource="{Binding PreChecks}" VerticalAlignment="Stretch">
+        <ItemsControl ItemsSource="{Binding PreChecks}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                     <Grid />
@@ -26,37 +44,23 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="model:PreCheckBase">
-                    <!-- selected precheck details -->
-                    <Grid RowDefinitions="10, *, Auto, 10" ColumnDefinitions="10, 10, *, 10"
-                          Classes="precheck-details"
-                          VerticalAlignment="Stretch"
-                          IsVisible="{Binding IsSelected}">
-                        <Rectangle Grid.Row="1" Grid.Column="1" Width="3"
-                                   Fill="{Binding State, Converter={StaticResource colorConverter}}"
-                                   HorizontalAlignment="Left" />
-
-                        <ScrollViewer Grid.Row="1" Grid.Column="2"
-                                      VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel HorizontalAlignment="Left">
-                                <Label Content="{Binding Name}"
-                                       FontSize="18" />
-                                <Rectangle Height="1" Fill="Gray" Margin="0 4 0 8" />
-                                <TextBlock Inlines="{Binding PreCheckDetails, Converter={StaticResource boldMarkup}}"
-                                           TextWrapping="Wrap" />
+                    <Border Classes="details precheck-details" CornerRadius="12" BorderThickness="1"
+                            IsVisible="{Binding IsSelected}"
+                            Classes.warning="{Binding State, Converter={StaticResource isState}, ConverterParameter=Warning}"
+                            Classes.error="{Binding State, Converter={StaticResource isState}, ConverterParameter=Error}">
+                        <Grid RowDefinitions="Auto,*,Auto" Margin="18 14">
+                            <StackPanel Orientation="Horizontal" Spacing="10" Margin="0 0 0 8">
+                                <cc:StatusSpinner State="{Binding State}" />
+                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White" />
                             </StackPanel>
-                        </ScrollViewer>
-
-                        <Button Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Classes="yellow"
-                                IsVisible="{Binding ActionButtonIsVisible}"
-                                CornerRadius="15"
-                                Margin="0 10"
-                                Command="{Binding ActionButtonCommand}"
-                                Content="{Binding ActionButtonText}"
-                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                HorizontalAlignment="Stretch" />
-
-                    </Grid>
+                            <TextBlock Grid.Row="1" Classes="text" TextWrapping="Wrap"
+                                       Inlines="{Binding PreCheckDetails, Converter={StaticResource boldMarkup}}" />
+                            <Button Grid.Row="2" Classes="primary" Margin="0 12 0 0" HorizontalAlignment="Left"
+                                    IsVisible="{Binding ActionButtonIsVisible}"
+                                    Command="{Binding ActionButtonCommand}"
+                                    Content="{Binding ActionButtonText}" />
+                        </Grid>
+                    </Border>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>

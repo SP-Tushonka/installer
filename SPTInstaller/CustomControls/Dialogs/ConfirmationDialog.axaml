@@ -3,23 +3,25 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:dialogHost="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
-             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="300"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="180"
              x:Class="SPTInstaller.CustomControls.Dialogs.ConfirmationDialog"
-             MinWidth="300" MinHeight="100"
-             MaxWidth="600" MaxHeight="300">
-    <Grid RowDefinitions="10,AUTO,*,AUTO,10" ColumnDefinitions="10,*,AUTO,10,AUTO,10"
-          Background="{StaticResource SPT_Background_Light}">
-        <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4"
-                   Text="{Binding Message, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                   TextWrapping="Wrap" />
-        <Button Content="No" Grid.Row="3" Grid.Column="2"
-                Width="50" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                Command="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=dialogHost:DialogHost}, Path=CloseDialogCommand}"
-                CommandParameter="False"
-                Classes="yellow" />
-        <Button Content="Yes" Grid.Row="3" Grid.Column="4"
-                Width="50" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                Command="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=dialogHost:DialogHost}, Path=CloseDialogCommand}"
-                CommandParameter="True" />
-    </Grid>
+             x:Name="Root"
+             Width="440">
+    <Border Background="{StaticResource Gray950Brush}" BorderBrush="{StaticResource Gray700Brush}" BorderThickness="1"
+            CornerRadius="12" Padding="20 18">
+        <StackPanel Spacing="8">
+            <TextBlock Text="{Binding #Root.Message}" FontSize="15" FontWeight="SemiBold" Foreground="White"
+                       TextWrapping="Wrap" />
+            <TextBlock Classes="body" Text="{Binding #Root.Detail}"
+                       IsVisible="{Binding #Root.Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0 10 0 0">
+                <Button Content="{Binding #Root.CancelText}"
+                        Command="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=dialogHost:DialogHost}, Path=CloseDialogCommand}"
+                        CommandParameter="{x:False}" />
+                <Button Classes="primary" Content="{Binding #Root.ConfirmText}"
+                        Command="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=dialogHost:DialogHost}, Path=CloseDialogCommand}"
+                        CommandParameter="{x:True}" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
 </UserControl>

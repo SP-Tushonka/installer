@@ -52,29 +52,55 @@ public record DownloadResult(DownloadOutcome Outcome, FileInfo? File = null);
 /// </summary>
 public static class VerifiedDownloader
 {
-    private const int Parallelism = 4;
+    public const int Parallelism = 4;
     private const int AttemptsPerChunk = 6;
     private const int VerifyRounds = 3;
     private const int BufferSize = 1024 * 1024;
 
+    // A mirror that accepts the connection but stops sending would otherwise hold a chunk until the 15 minute client timeout
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(20);
+
     private static int _preferredRoute;
+
+    // Blobs download side by side, this keeps the connection count at Parallelism however many are in flight
+    private static readonly SemaphoreSlim Connections = new(Parallelism, Parallelism);
 
     private sealed class ChunkCorruptedException(int index) : Exception($"Chunk {index} kept failing its hash");
 
     /// <summary>
     /// Reports progress on every byte count and a "3.2 GB of 7.6 GB · 18.4 MB/s · about 4 min left" line at most once a second
     /// </summary>
-    private sealed class TransferMeter(long total, long done, string? prefix, IProgress<double>? progress, Action<string>? status)
+    internal sealed class TransferMeter(long total, long done, string? prefix, IProgress<double>? progress, Action<string>? status)
     {
         private readonly Stopwatch _clock = Stopwatch.StartNew();
-        private readonly long _startDone = done;
         private long _done = done;
+        private long _skipped;
         private long _lastReport;
+        private int _lastPercent = -1;
+
+        // Speed over the last few seconds, the same window DownloadSources uses for the per-mirror speeds
+        private readonly Queue<(long Ms, long Done)> _samples = new([(0, done)]);
+
+        /// <summary>
+        ///     Count bytes that were already on disk, which move the bar but aren't download speed
+        /// </summary>
+        /// <param name="bytes">Bytes already on disk</param>
+        public void Skip(long bytes)
+        {
+            Interlocked.Add(ref _skipped, bytes);
+            Add(bytes);
+        }
 
         public void Add(long bytes)
         {
             var now = Interlocked.Add(ref _done, bytes);
-            progress?.Report(100.0 * now / total);
+            var percent = 100.0 * now / total;
+
+            // A read can be a few KB, so reporting each one floods the UI thread with updates the bar can't show
+            if (Interlocked.Exchange(ref _lastPercent, (int)percent) != (int)percent)
+            {
+                progress?.Report(percent);
+            }
 
             var elapsed = _clock.ElapsedMilliseconds;
             var last = Interlocked.Read(ref _lastReport);
@@ -84,7 +110,21 @@ public static class VerifiedDownloader
                 return;
             }
 
-            var speed = (now - _startDone) / (elapsed / 1000.0);
+            double speed;
+
+            lock (_samples)
+            {
+                while (_samples.Count > 1 && elapsed - _samples.Peek().Ms > DownloadSources.SpeedWindow.TotalMilliseconds)
+                {
+                    _samples.Dequeue();
+                }
+
+                var downloaded = now - Interlocked.Read(ref _skipped);
+                var (oldestMs, oldestDone) = _samples.Peek();
+                speed = (downloaded - oldestDone) / Math.Max((elapsed - oldestMs) / 1000.0, 0.001);
+                _samples.Enqueue((elapsed, downloaded));
+            }
+
             var text = $"{prefix}{DirectorySizeHelper.SizeSuffix(now)} of {DirectorySizeHelper.SizeSuffix(total)}";
 
             if (speed > 0)
@@ -106,9 +146,9 @@ public static class VerifiedDownloader
     public static async Task<DownloadResult> DownloadAsync(string fileName, IReadOnlyList<string> urls, DownloadSpec spec,
         IProgress<double>? progress, Action<string>? status = null, CancellationToken cancellationToken = default)
     {
-        Directory.CreateDirectory(DownloadCacheHelper.CachePath);
+        Directory.CreateDirectory(DownloadCacheHelper.DownloadPath);
 
-        var output = new FileInfo(Path.Join(DownloadCacheHelper.CachePath, fileName));
+        var output = new FileInfo(Path.Join(DownloadCacheHelper.DownloadPath, fileName));
 
         // The hash is in the name so a part file is never resumed against a different upload
         var part = new FileInfo($"{output.FullName}.{Convert.ToHexString(spec.Digest)[..12]}.part");
@@ -281,19 +321,30 @@ public static class VerifiedDownloader
         var buffer = new byte[BufferSize];
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
+        // Read per chunk, so a mirror chosen mid-download takes over from the next chunk
+        var candidates = DownloadSources.Candidates(urls);
+        var firstUrl = candidates.IndexOf(DownloadSources.Pick(candidates));
+
         for (var attempt = 0;; attempt++)
         {
-            var routeIndex = (Volatile.Read(ref _preferredRoute) + attempt) % (urls.Count * routes.Length);
-            var url = urls[routeIndex / routes.Length];
-            var (mode, client) = routes[routeIndex % routes.Length];
+            // Every route is tried on a mirror before moving to the next one
+            var url = candidates[(firstUrl + attempt / routes.Length) % candidates.Count];
+            var routeIndex = (Volatile.Read(ref _preferredRoute) + attempt) % routes.Length;
+            var (mode, client) = routes[routeIndex];
+            var watch = Stopwatch.StartNew();
             long written = 0;
+
+            using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            await Connections.WaitAsync(cancellationToken);
+            stall.CancelAfter(StallTimeout);
 
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Range = new RangeHeaderValue(start, start + length - 1);
 
-                using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stall.Token);
                 response.EnsureSuccessStatusCode();
 
                 if (response.StatusCode != HttpStatusCode.PartialContent || response.Content.Headers.ContentRange?.From != start)
@@ -301,12 +352,14 @@ public static class VerifiedDownloader
                     throw new HttpRequestException($"{url} did not honour the range request");
                 }
 
-                await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
+                await using var body = await response.Content.ReadAsStreamAsync(stall.Token);
 
                 while (written < length)
                 {
+                    stall.CancelAfter(StallTimeout);
+
                     var read = await body.ReadAsync(buffer.AsMemory(0, (int)Math.Min(BufferSize, length - written)),
-                        cancellationToken);
+                        stall.Token);
 
                     if (read == 0)
                     {
@@ -317,11 +370,13 @@ public static class VerifiedDownloader
                     await RandomAccess.WriteAsync(handle, buffer.AsMemory(0, read), start + written, cancellationToken);
                     written += read;
                     count(read);
+                    DownloadSources.Received(url, read);
                 }
 
                 if (hash.GetHashAndReset().AsSpan().SequenceEqual(spec.ChunkDigests![index]))
                 {
                     Volatile.Write(ref _preferredRoute, routeIndex);
+                    DownloadSources.Report(url, length, watch.Elapsed);
                     return;
                 }
 
@@ -336,10 +391,20 @@ public static class VerifiedDownloader
             catch (Exception ex) when (ex is not ChunkCorruptedException && attempt < AttemptsPerChunk - 1
                                        && !cancellationToken.IsCancellationRequested)
             {
-                Log.Warning("Chunk {index} failed ({mode}), retrying: {message}", index, mode, ex.Message);
+                var reason = stall.IsCancellationRequested ? $"no data for {StallTimeout.TotalSeconds} s" : ex.Message;
+                Log.Warning("Chunk {index} failed ({mode}), retrying: {url} :: {message}", index, mode, url, reason);
                 hash.GetHashAndReset();
                 count(-written);
+                DownloadSources.Received(url, -written);
+                DownloadSources.Failed(url);
             }
+            finally
+            {
+                Connections.Release();
+            }
+
+            // Backs off a little each time, so a mirror having a moment gets a chance to recover
+            await Task.Delay(TimeSpan.FromSeconds(Math.Min(2 * (attempt + 1), 10)), cancellationToken);
         }
     }
 
@@ -347,12 +412,17 @@ public static class VerifiedDownloader
         DownloadSpec spec, IProgress<double>? progress, Action<string>? status, CancellationToken cancellationToken)
     {
         var routes = DownloadCacheHelper.Routes;
-        var attempts = urls.SelectMany(url => routes.Select(route => (Url: url, route.Name, route.Client))).ToList();
+        var candidates = DownloadSources.Candidates(urls);
+        var first = DownloadSources.Pick(candidates);
+        var attempts = candidates.OrderByDescending(url => url == first)
+            .SelectMany(url => routes.Select(route => (Url: url, route.Name, route.Client))).ToList();
         var buffer = new byte[BufferSize];
 
         for (var attempt = 0; attempt < attempts.Count; attempt++)
         {
             var (url, mode, client) = attempts[attempt];
+
+            await Connections.WaitAsync(cancellationToken);
 
             try
             {
@@ -410,6 +480,7 @@ public static class VerifiedDownloader
                     await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     copied += read;
                     meter?.Add(read);
+                    DownloadSources.Received(url, read);
                 }
 
                 if (remaining.HasValue && copied != remaining)
@@ -428,6 +499,11 @@ public static class VerifiedDownloader
             catch (Exception ex) when (attempt < attempts.Count - 1 && !cancellationToken.IsCancellationRequested)
             {
                 Log.Warning("Download failed ({mode}), resuming over the next route: {message}", mode, ex.Message);
+                DownloadSources.Failed(url);
+            }
+            finally
+            {
+                Connections.Release();
             }
         }
 

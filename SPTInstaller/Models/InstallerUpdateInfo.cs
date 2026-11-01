@@ -1,7 +1,6 @@
 ﻿using ReactiveUI;
 using Serilog;
 using SPTInstaller.Helpers;
-using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Text.Json;
 
@@ -14,8 +13,14 @@ public class InstallerUpdateInfo : ReactiveObject
     public Version? NewVersion
     {
         get => _newVersion;
-        set => this.RaiseAndSetIfChanged(ref _newVersion, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _newVersion, value);
+            this.RaisePropertyChanged(nameof(NewVersionText));
+        }
     }
+
+    public string? NewVersionText => NewVersion == null ? null : $"v{NewVersion.ToString(3)}";
     
     private string _changeLog;
     
@@ -65,58 +70,59 @@ public class InstallerUpdateInfo : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _downloadProgress, value);
     }
     
+    private string? _expectedSha256;
+
     public async Task UpdateInstaller()
     {
         Updating = true;
         UpdateAvailable = false;
-        
-        var updater = new FileInfo(Path.Join(DownloadCacheHelper.CachePath, "update.ps1"));
-        
-        if (!FileHelper.StreamAssemblyResourceOut("update.ps1", updater.FullName))
+
+        var newInstaller = await DownloadNewInstaller();
+
+        if (newInstaller == null)
         {
-            Log.Fatal("Failed to prepare update file");
             return;
         }
-        
-        
-        if (!updater.Exists)
+
+        UpdateInfoText = "Restarting the installer ...";
+
+        var error = await SelfUpdater.ReplaceAndRestart(newInstaller);
+
+        if (error != null)
         {
-            UpdateInfoText = "Failed to get updater from resources :(";
-            return;
+            UpdateInfoText = error;
         }
-        
-        var newInstallerPath = await DownloadNewInstaller();
-        
-        if (string.IsNullOrWhiteSpace(newInstallerPath))
-            return;
-        
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            ArgumentList =
-            {
-                "-ExecutionPolicy", "Bypass", "-File", $"{updater.FullName}", $"{newInstallerPath}",
-                $"{Path.Join(Environment.CurrentDirectory, "SPTInstaller.exe")}"
-            }
-        });
     }
-    
-    private async Task<string> DownloadNewInstaller()
+
+    private async Task<FileInfo?> DownloadNewInstaller()
     {
         UpdateInfoText = $"Downloading installer v{NewVersion}";
-        
+
         var progress = new Progress<double>(x => DownloadProgress = (int)x);
-        
-        var file = await DownloadCacheHelper.DownloadFileAsync("SPTInstaller.exe", DownloadCacheHelper.InstallerUrls,
+
+        var file = await DownloadCacheHelper.DownloadFileAsync(DownloadCacheHelper.InstallerFileName, DownloadCacheHelper.InstallerUrls,
             progress);
-        
+
         if (file == null || !file.Exists)
         {
             UpdateInfoText = "Failed to download new installer :(";
-            return "";
+            return null;
         }
-        
-        return file.FullName;
+
+        if (_expectedSha256 == null)
+        {
+            Log.Warning("installer.json has no hash for the new installer, it is used unchecked");
+        }
+        else if (!FileHashHelper.CheckHash(file, System.Security.Cryptography.HashAlgorithmName.SHA256,
+                     Convert.FromHexString(_expectedSha256)))
+        {
+            Log.Error("The downloaded installer does not match the published hash");
+            file.Delete();
+            UpdateInfoText = "The new installer was damaged while downloading. Restart the installer to try again.";
+            return null;
+        }
+
+        return file;
     }
     
     private void EndCheck(string infoText, bool updateAvailable, bool log = true)
@@ -141,17 +147,17 @@ public class InstallerUpdateInfo : ReactiveObject
         
         try
         {
-            var installerInfoFile =
-                await DownloadCacheHelper.GetOrDownloadFileAsync("installer.json", DownloadCacheHelper.InstallerInfoUrls, null, DownloadCacheHelper.SuggestedTtl);
-            
-            if (installerInfoFile == null)
+            var installerInfoJson =
+                await DownloadCacheHelper.GetMetadataAsync("installer.json", DownloadCacheHelper.InstallerInfoUrls);
+
+            if (installerInfoJson == null)
             {
                 EndCheck("Failed to download installer info", false);
                 return;
             }
             
             var installerInfo =
-                JsonSerializer.Deserialize<InstallerInfo>(File.ReadAllText(installerInfoFile.FullName), JsonOptions.Default);
+                JsonSerializer.Deserialize<InstallerInfo>(installerInfoJson, JsonOptions.Default);
             
             if (installerInfo == null)
             {
@@ -168,10 +174,12 @@ public class InstallerUpdateInfo : ReactiveObject
             }
             
             NewVersion = latestVersion;
+            var sha256 = OperatingSystem.IsWindows() ? installerInfo.Sha256 : installerInfo.Sha256Linux;
+            _expectedSha256 = string.IsNullOrWhiteSpace(sha256) ? null : sha256;
             
             foreach (var change in installerInfo.Changes)
             {
-                ChangeLog += $"◉ {change}\n";
+                ChangeLog += $"{change}\n";
             }
             
             EndCheck($"Update Installer: v{latestVersion}", true);
@@ -180,8 +188,6 @@ public class InstallerUpdateInfo : ReactiveObject
         }
         catch (JsonException ex)
         {
-            DownloadCacheHelper.ClearMetadataCache();
-
             EndCheck("Could not read the installer info, it will be fetched again next launch", false, false);
             Log.Error(ex, "Discarded unreadable installer info");
         }

@@ -2,7 +2,7 @@ namespace SPTInstaller.Models.Mirrors;
 
 public class PatchInfoMirror
 {
-    public string Link { get; set; }
-    public string Hash { get; set; }
     public string Name { get; set; }
+    /// <summary>The patch document. Blobs are at blobs/&lt;hash&gt; next to it.</summary>
+    public string Document { get; set; }
 }

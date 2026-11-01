@@ -1,0 +1,3 @@
+[submodule "patcher"]
+	path = patcher
+	url = https://github.com/SP-Tushonka/patcher

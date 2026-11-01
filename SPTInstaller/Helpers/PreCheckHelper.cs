@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using SPTInstaller.Models;
@@ -13,13 +15,20 @@ public static class PreCheckHelper
         @"Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\EscapeFromTarkov";
     private const string steamPathRegistryKey = @"Software\Wow6432Node\Valve\Steam";
     private const string tarkovAppId = "3932890";
-    
+
+    /// <summary>
+    ///     Steam folders of native, Flatpak and Snap installs, relative to the home folder
+    /// </summary>
+    private static readonly string[] linuxSteamFolders =
+    [
+        ".local/share/Steam",
+        ".steam/steam",
+        ".var/app/com.valvesoftware.Steam/.local/share/Steam",
+        "snap/steam/common/.local/share/Steam",
+    ];
+
     public static string? DetectOriginalGamePath()
     {
-        // We can't detect the installed path on non-Windows
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return null;
-
         // We prioritize the Steam version, as the Steam CDN is faster for updates, and if someone
         // owns it on both platforms, there's a better chance their Steam version is up to date
         var steamGamePath = DetectSteamGamePath();
@@ -29,6 +38,10 @@ public static class PreCheckHelper
             var steamBuildDir = Path.Combine(steamGamePath, "build");
             return Path.TrimEndingDirectorySeparator(steamBuildDir);
         }
+
+        // The BSG Launcher's key is inside a Wine prefix on Linux, which can be anywhere
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return null;
 
         // Fall back to the BSG Launcher registry key if Steam isn't being used
         var uninstallStringValue = Registry.LocalMachine.OpenSubKey(registryInstall, false)
@@ -51,10 +64,6 @@ public static class PreCheckHelper
      */
     private static string? DetectSteamGamePath()
     {
-        // We can't detect the installed path on non-Windows
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return null;
-
         var steamPath = GetSteamInstallPath();
         if (string.IsNullOrEmpty(steamPath))
         {
@@ -73,9 +82,13 @@ public static class PreCheckHelper
 
     private static string? GetSteamInstallPath()
     {
-        // We can't detect the installed path on non-Windows
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return null;
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+            return linuxSteamFolders.Select(folder => Path.Join(home, folder))
+                .FirstOrDefault(folder => File.Exists(Path.Join(folder, "steamapps", "libraryfolders.vdf")));
+        }
 
         var steamPath = string.Empty;
         using (var steamReg = Registry.LocalMachine.OpenSubKey(steamPathRegistryKey, false))
@@ -131,7 +144,16 @@ public static class PreCheckHelper
     {
         try
         {
-            string version = FileVersionInfo.GetVersionInfo(Path.Join(gamePath, "/EscapeFromTarkov.exe")).ProductVersion
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // FileVersionInfo only reads managed assemblies outside Windows and the game's exe is native
+                using var consistencyInfo = File.OpenRead(Path.Join(gamePath, "ConsistencyInfo"));
+                using var document = JsonDocument.Parse(consistencyInfo);
+
+                return Result.FromSuccess(document.RootElement.GetProperty("Version").GetString()!.Split('.')[^1]);
+            }
+
+            string version = FileVersionInfo.GetVersionInfo(Path.Join(gamePath, "EscapeFromTarkov.exe")).ProductVersion
                 .Replace('-', '.').Split('.')[^2];
             return Result.FromSuccess(version);
         }

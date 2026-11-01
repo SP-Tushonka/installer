@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
-using Avalonia.Media;
 using System.Windows.Input;
+using SPTInstaller.Models;
 
 namespace SPTInstaller.CustomControls;
 
@@ -13,7 +14,7 @@ public partial class TitleBar : UserControl
     {
         InitializeComponent();
     }
-    
+
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
@@ -33,57 +34,37 @@ public partial class TitleBar : UserControl
             window.BeginMoveDrag(e);
         }
     }
-    
-    public static readonly StyledProperty<string> TitleProperty =
-        AvaloniaProperty.Register<TitleBar, string>(nameof(Title));
-    
-    public string Title
+
+    public static readonly StyledProperty<IReadOnlyList<StepItem>> StepsProperty =
+        AvaloniaProperty.Register<TitleBar, IReadOnlyList<StepItem>>(nameof(Steps), []);
+
+    public IReadOnlyList<StepItem> Steps
     {
-        get => GetValue(TitleProperty);
-        set => SetValue(TitleProperty, value);
+        get => GetValue(StepsProperty);
+        set => SetValue(StepsProperty, value);
     }
-    
-    public static readonly StyledProperty<IBrush> ButtonForegroundProperty =
-        AvaloniaProperty.Register<TitleBar, IBrush>(nameof(ButtonForeground));
-    
-    public IBrush ButtonForeground
+
+    public static readonly StyledProperty<string> VersionProperty =
+        AvaloniaProperty.Register<TitleBar, string>(nameof(Version), "");
+
+    public string Version
     {
-        get => GetValue(ButtonForegroundProperty);
-        set => SetValue(ButtonForegroundProperty, value);
+        get => GetValue(VersionProperty);
+        set => SetValue(VersionProperty, value);
     }
-    
-    public static new readonly StyledProperty<IBrush> ForegroundProperty =
-        AvaloniaProperty.Register<TitleBar, IBrush>(nameof(Foreground));
-    
-    public new IBrush Foreground
-    {
-        get => GetValue(ForegroundProperty);
-        set => SetValue(ForegroundProperty, value);
-    }
-    
-    public static new readonly StyledProperty<IBrush> BackgroundProperty =
-        AvaloniaProperty.Register<TitleBar, IBrush>(nameof(Background));
-    
-    public new IBrush Background
-    {
-        get => GetValue(BackgroundProperty);
-        set => SetValue(BackgroundProperty, value);
-    }
-    
-    //Close Button Command (X Button) Property
+
     public static readonly StyledProperty<ICommand> XButtonCommandProperty =
         AvaloniaProperty.Register<TitleBar, ICommand>(nameof(XButtonCommand));
-    
+
     public ICommand XButtonCommand
     {
         get => GetValue(XButtonCommandProperty);
         set => SetValue(XButtonCommandProperty, value);
     }
-    
-    //Minimize Button Command (- Button) Property
+
     public static readonly StyledProperty<ICommand> MinButtonCommandProperty =
         AvaloniaProperty.Register<TitleBar, ICommand>(nameof(MinButtonCommand));
-    
+
     public ICommand MinButtonCommand
     {
         get => GetValue(MinButtonCommandProperty);

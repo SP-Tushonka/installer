@@ -1,6 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Serilog;
 
@@ -8,6 +11,10 @@ namespace SPTInstaller.Helpers;
 
 public static class DownloadCacheHelper
 {
+    // Declared before Routes because static fields initialise in order
+    internal static readonly ProductInfoHeaderValue UserAgent =
+        new("SPTInstaller", Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "unknown");
+
     internal static readonly (string Name, HttpClient Client)[] Routes =
     [
         ("public DNS", CreateClient(new SocketsHttpHandler { UseProxy = false, ConnectCallback = PublicDns.ConnectAsync })),
@@ -15,16 +22,47 @@ public static class DownloadCacheHelper
         ("proxy bypassed", CreateClient(new SocketsHttpHandler { UseProxy = false })),
     ];
 
-    private static HttpClient CreateClient(SocketsHttpHandler handler) =>
-        new(handler) { Timeout = TimeSpan.FromMinutes(15) };
+    internal static HttpClient CreateClient(SocketsHttpHandler handler, TimeSpan? timeout = null)
+    {
+        var client = new HttpClient(handler) { Timeout = timeout ?? TimeSpan.FromMinutes(15) };
+        client.DefaultRequestHeaders.UserAgent.Add(UserAgent);
+        return client;
+    }
 
     private const string VersionMarkerFileName = ".installer-version";
 
     private static readonly TimeSpan ResumableLifetime = TimeSpan.FromDays(7);
 
-    public static TimeSpan SuggestedTtl = TimeSpan.FromHours(1);
     public static string CachePath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "spt-installer/cache");
+        "spt-installer", "cache");
+
+    // Where patches and the SPT zip are saved. The free space check moves it into the install folder when the cache drive is short.
+    public static string DownloadPath = CachePath;
+
+    public static bool DownloadsInInstallFolder => !string.Equals(DownloadPath, CachePath, StringComparison.OrdinalIgnoreCase);
+
+    public static string InstallFolderDownloads(string installPath) => Path.Join(installPath, ".installer-downloads");
+
+    /// <summary>
+    /// Deletes downloads kept in the install folder. They are only kept there until the install finishes.
+    /// </summary>
+    public static void RemoveInstallFolderDownloads()
+    {
+        if (!DownloadsInInstallFolder || !Directory.Exists(DownloadPath))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(DownloadPath, true);
+            Log.Information("Removed downloads from the install folder: {path}", DownloadPath);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Could not remove downloads from the install folder: {path}", DownloadPath);
+        }
+    }
 
     /// <summary>
     /// The size a host reports for a file without downloading it, tried over each route in turn
@@ -53,16 +91,17 @@ public static class DownloadCacheHelper
         return null;
     }
 
-    public static string PatcherFileName(int sourceClientVersion, int targetClientVersion)
-        => $"patcher-{sourceClientVersion}-{targetClientVersion}";
-    
+    public static string PatchDocumentFileName(int sourceClientVersion, int targetClientVersion)
+        => $"patch-{sourceClientVersion}-{targetClientVersion}.json";
+
     private const string PrimaryHost = "https://patcher.sp-tushonka.com";
     private const string FallbackHost = "https://mirror.sp-tushonka.com";
 
     public static readonly string[] ReleaseUrls = Endpoints("release.json", "SPT_RELEASE_URL");
     public static readonly string[] PatchManifestUrls = Endpoints("mirrors.json", "SPT_MIRRORS_URL");
-    public static readonly string[] InstallerUrls = Endpoints("SPTInstaller.exe");
-    public static readonly string[] InstallerInfoUrls = Endpoints("installer.json");
+    public static string InstallerFileName => OperatingSystem.IsWindows() ? "SPTInstaller.exe" : "SPTInstaller";
+    public static readonly string[] InstallerUrls = Endpoints(InstallerFileName, "SPT_INSTALLER_URL");
+    public static readonly string[] InstallerInfoUrls = Endpoints("installer.json", "SPT_INSTALLER_INFO_URL");
 
     private static readonly Dictionary<string, Task<FileInfo?>> _inFlight = new(StringComparer.OrdinalIgnoreCase);
 
@@ -74,31 +113,38 @@ public static class DownloadCacheHelper
             : [custom];
     }
     
-    public static string GetCacheSizeText()
+    /// <summary>
+    ///     Get the size of the cached downloads
+    /// </summary>
+    /// <returns>Size in bytes, -1 when the cache can't be read</returns>
+    public static long GetCacheSize()
     {
         if (!Directory.Exists(CachePath))
         {
-            var message = "No cache folder";
-            Log.Information(message);
-            return message;
+            return 0;
         }
-        
-        var cacheDir = new DirectoryInfo(CachePath);
-        
-        var cacheSize = DirectorySizeHelper.GetSizeOfDirectory(cacheDir);
-        
+
+        var cacheSize = DirectorySizeHelper.GetSizeOfDirectory(new DirectoryInfo(CachePath));
+
         if (cacheSize == -1)
         {
-            var message = "An error occurred while getting the cache size :(";
-            Log.Error(message);
-            return message;
+            Log.Error("An error occurred while getting the cache size");
+            return -1;
         }
-        
-        if (cacheSize == 0)
-            return "Empty";
-        
-        return DirectorySizeHelper.SizeSuffix(cacheSize);
+
+        // The version marker is always there, so it doesn't count as cached downloads
+        var marker = new FileInfo(Path.Join(CachePath, VersionMarkerFileName));
+        return marker.Exists ? cacheSize - marker.Length : cacheSize;
     }
+
+    public static string CacheSizeText(long size) => size switch
+    {
+        -1 => "Size unknown",
+        0 => "Empty",
+        _ => DirectorySizeHelper.SizeSuffix(size)
+    };
+
+    public static string GetCacheSizeText() => CacheSizeText(GetCacheSize());
 
     public static void ClearCacheOnVersionChange(string version)
     {
@@ -161,30 +207,45 @@ public static class DownloadCacheHelper
         }
     }
 
-    public static bool ClearMetadataCache()
+    /// <summary>
+    /// Deletes every download and metadata file, keeping only the marker that ties the cache to this installer version
+    /// </summary>
+    /// <returns>False when something could not be removed, for example a file still open elsewhere</returns>
+    public static bool ClearCache()
     {
         if (!Directory.Exists(CachePath))
         {
             return true;
         }
 
-        var metaData = new DirectoryInfo(CachePath).GetFiles("*.json", SearchOption.TopDirectoryOnly);
         var allDeleted = true;
+        var cache = new DirectoryInfo(CachePath);
 
-        foreach (var file in metaData)
+        foreach (var entry in cache.GetFileSystemInfos().Where(entry => entry.Name != VersionMarkerFileName))
         {
-            file.Delete();
-            file.Refresh();
-
-            if (file.Exists)
+            try
+            {
+                if (entry is DirectoryInfo directory)
+                {
+                    directory.Delete(true);
+                }
+                else
+                {
+                    entry.Delete();
+                }
+            }
+            catch (Exception ex)
             {
                 allDeleted = false;
+                Log.Warning(ex, "Could not remove {name} from the cache", entry.Name);
             }
         }
-        
+
+        Log.Information("Cache cleared{result}", allDeleted ? "" : ", some files were in use");
+
         return allDeleted;
     }
-    
+
     /// <summary>
     /// Check if a file in the cache already exists
     /// </summary>
@@ -193,7 +254,15 @@ public static class DownloadCacheHelper
     /// <param name="cachedFile">The file found in the cache; null if no file is found</param>
     /// <returns>True if the file is in the cache and its hash matches the expected hash, otherwise false</returns>
     public static bool CheckCacheHash(string fileName, DownloadSpec spec, out FileInfo cachedFile)
-        => CheckCacheHash(new FileInfo(Path.Join(CachePath, fileName)), spec, out cachedFile);
+    {
+        if (CheckCacheHash(new FileInfo(Path.Join(DownloadPath, fileName)), spec, out cachedFile))
+        {
+            return true;
+        }
+
+        // A copy left in the shared cache by an earlier install is still usable
+        return DownloadsInInstallFolder && CheckCacheHash(new FileInfo(Path.Join(CachePath, fileName)), spec, out cachedFile);
+    }
     
     private static bool CheckCacheHash(FileInfo cacheFile, DownloadSpec spec, out FileInfo fileInCache)
     {
@@ -228,52 +297,6 @@ public static class DownloadCacheHelper
         }
     }
 
-    /// <summary>
-    /// Gets a file in the cache based on a time-to-live from its last modified time
-    /// </summary>
-    /// <param name="fileName">The name of the file to look for in the cache</param>
-    /// <param name="ttl">The time-to-live to check against</param>
-    /// <param name="cachedFile">The file found in the cache if it exists</param>
-    /// <returns>Returns true if the file was found in the cache, otherwise false</returns>
-    public static bool CheckCacheTTL(string fileName, TimeSpan ttl, out FileInfo cachedFile) =>
-        CheckCacheTTL(new FileInfo(Path.Join(CachePath, fileName)), ttl, out cachedFile);
-
-    private static bool CheckCacheTTL(FileInfo cacheFile, TimeSpan ttl, out FileInfo fileInCache)
-    {
-        fileInCache = cacheFile;
-        
-        try
-        {
-            cacheFile.Refresh();
-            Directory.CreateDirectory(CachePath);
-            
-            if (!cacheFile.Exists)
-            {
-                Log.Information($"{cacheFile.Name} {(cacheFile.Exists ? "is in cache" : "NOT in cache")}");
-                return false;
-            }
-            
-            if (cacheFile.Length == 0)
-            {
-                Log.Warning($"{cacheFile.Name} is empty, discarding it");
-                cacheFile.Delete();
-
-                return false;
-            }
-
-            var validTimeToLive = cacheFile.LastWriteTime.Add(ttl) > DateTime.Now;
-
-            Log.Information($"{cacheFile.Name} TTL is {(validTimeToLive ? "OK" : "INVALID")}");
-            
-            return validTimeToLive;
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Something went wrong during hashing");
-            return false;
-        }
-    }
-    
     /// <summary>
     /// Download a file to the cache folder
     /// </summary>
@@ -409,36 +432,41 @@ public static class DownloadCacheHelper
     // HttpIOException is a connection dropped mid-body, and a TLS record failing to decrypt is an IOException over a Win32Exception.
     private static bool IsTransportFailure(Exception exception)
         => exception is HttpRequestException or HttpIOException or TaskCanceledException
-            or IOException { InnerException: System.ComponentModel.Win32Exception };
+           || (exception is IOException && exception.InnerException is System.ComponentModel.Win32Exception);
 
     /// <summary>
-    /// Get or download a file using a time to live
+    /// Fetches a metadata file such as release.json, tried over each url and route in turn. It is never cached,
+    /// because a regenerated patch changes it and a stale copy fails every hash.
     /// </summary>
-    /// <param name="fileName">The file to get from cache</param>
-    /// <param name="targetLinks">The links to use for the download, tried in order</param>
-    /// <param name="progress">A progress object for reporting download progress</param>
-    /// <param name="timeToLive">The time-to-live to check against in the cache</param>
-    /// <returns></returns>
-    public static async Task<FileInfo?> GetOrDownloadFileAsync(string fileName, IReadOnlyList<string> targetLinks,
-        IProgress<double>? progress, TimeSpan timeToLive)
+    public static async Task<string?> GetMetadataAsync(string fileName, IReadOnlyList<string> targetLinks)
     {
-        try
+        foreach (var url in targetLinks)
         {
-            if (CheckCacheTTL(fileName, timeToLive, out FileInfo cachedFile))
+            foreach (var (mode, client) in Routes)
             {
-                return cachedFile;
-            }
+                try
+                {
+                    using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    var text = await client.GetStringAsync(url, timeout.Token);
 
-            Log.Information($"Downloading File: {targetLinks[0]}");
-            return await DownloadFileAsync(fileName, targetLinks, progress);
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        return text;
+                    }
+
+                    Log.Warning("{name} was empty ({mode}): {url}", fileName, mode, url);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning("Could not fetch {name} ({mode}): {url} :: {message}", fileName, mode, url, ex.Message);
+                }
+            }
         }
-        catch (Exception ex)
-        {
-            Log.Error(ex, $"Error while getting file: {fileName}");
-            return null;
-        }
+
+        Log.Error("Could not fetch {name} from any url: {urls}", fileName, string.Join(", ", targetLinks));
+        return null;
     }
-    
+
     /// <summary>
     /// Get the file from cache or download and verify it
     /// </summary>
@@ -448,7 +476,8 @@ public static class DownloadCacheHelper
     /// <param name="progress">A provider for progress updates</param>
     /// <param name="status">Receives what the download is doing, for the status line</param>
     public static async Task<DownloadResult> GetOrDownloadFileAsync(string fileName, IReadOnlyList<string> targetLinks,
-        DownloadSpec spec, IProgress<double> progress, Action<string>? status = null)
+        DownloadSpec spec, IProgress<double> progress, Action<string>? status = null,
+        CancellationToken cancellationToken = default)
     {
         if (CheckCacheHash(fileName, spec, out var cacheFile))
         {
@@ -456,6 +485,6 @@ public static class DownloadCacheHelper
         }
 
         Log.Information($"Downloading File: {targetLinks[0]}");
-        return await VerifiedDownloader.DownloadAsync(fileName, targetLinks, spec, progress, status);
+        return await VerifiedDownloader.DownloadAsync(fileName, targetLinks, spec, progress, status, cancellationToken);
     }
 }

@@ -3,13 +3,11 @@ using System.Diagnostics;
 using Avalonia;
 using ReactiveUI;
 using Serilog;
-using SPTInstaller.CustomControls;
 using SPTInstaller.Helpers;
 using SPTInstaller.Interfaces;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using SPTInstaller.Models;
@@ -50,6 +48,27 @@ public class MessageViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _showOptions, value);
     }
     
+    public override InstallerStep Step => InstallerStep.Install;
+
+    public override bool StepFailed => HasErrors;
+
+    public string? InstallPath { get; } = ServiceHelper.Get<InternalData>()?.TargetInstallPath;
+
+    public string? ReleaseText { get; } = string.IsNullOrEmpty(ServiceHelper.Get<InternalData>()?.ReleaseInfo?.SPTVersion)
+        ? null
+        : $"SPT {ServiceHelper.Get<InternalData>()!.ReleaseInfo.SPTVersion}";
+
+    // Those downloads are already deleted after installing, so there is no cache to offer clearing
+    public bool DownloadedToInstallFolder { get; } = DownloadCacheHelper.DownloadsInInstallFolder;
+
+    public string HelpText { get; } = ServiceHelper.Get<InternalData>()?.SelectedChannel?.IsLegacy == true
+        ? "This is a legacy release, so the SPT support channel can't help with it. Your log may still show what went wrong."
+        : "Copy your log and share it in the SPT support channel.";
+
+    public string SuccessTitle => ReleaseText == null ? "SPT is installed" : $"{ReleaseText} is installed";
+
+    public ICommand ClearCacheCommand { get; }
+
     private string? _retryText;
 
     public string? RetryText
@@ -65,11 +84,29 @@ public class MessageViewModel : ViewModelBase
     });
 
     private string _cacheInfoText;
-    
+
     public string CacheInfoText
     {
         get => _cacheInfoText;
         set => this.RaiseAndSetIfChanged(ref _cacheInfoText, value);
+    }
+
+    private bool _showCache;
+
+    /// <summary>
+    ///     Whether to show the cache line. Downloads in the install folder are deleted, so those hide it like an empty cache.
+    /// </summary>
+    public bool ShowCache
+    {
+        get => _showCache;
+        set => this.RaiseAndSetIfChanged(ref _showCache, value);
+    }
+
+    private void RefreshCache()
+    {
+        var size = DownloadCacheHelper.GetCacheSize();
+        CacheInfoText = DownloadCacheHelper.CacheSizeText(size);
+        ShowCache = !DownloadedToInstallFolder && size != 0;
     }
     
     private string _clipCommandText;
@@ -111,7 +148,6 @@ public class MessageViewModel : ViewModelBase
                 var filesToCopy = new List<IStorageFile>();
                 
                 var logFile = await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(data.DebugMode ? App.LogDebugPath : App.LogPath);
-                var patcherLogFile = await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(Path.Join(data.TargetInstallPath, "patcher.log"));
                     
                 if (logFile == null)
                 {
@@ -121,24 +157,6 @@ public class MessageViewModel : ViewModelBase
                 
                 filesToCopy.Add(logFile);
 
-                if (patcherLogFile != null)
-                {
-                    filesToCopy.Add(patcherLogFile);
-                }
-
-                if (Directory.Exists(data.TargetInstallPath))
-                {
-                    foreach (var path in Directory.GetFiles(data.TargetInstallPath, "patcher-*.log"))
-                    {
-                        var stepLog = await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(path);
-
-                        if (stepLog != null)
-                        {
-                            filesToCopy.Add(stepLog);
-                        }
-                    }
-                }
-                
                 await desktop.MainWindow.Clipboard.SetFilesAsync(filesToCopy);
                 ClipCommandText = "Copied!";
             }
@@ -148,14 +166,6 @@ public class MessageViewModel : ViewModelBase
             }
         } 
     });
-    
-    private StatusSpinner.SpinnerState _cacheCheckState;
-    
-    public StatusSpinner.SpinnerState CacheCheckState
-    {
-        get => _cacheCheckState;
-        set => this.RaiseAndSetIfChanged(ref _cacheCheckState, value);
-    }
     
     public ICommand CloseCommand { get; set; } = ReactiveCommand.Create(() =>
     {
@@ -169,7 +179,7 @@ public class MessageViewModel : ViewModelBase
     {
         ShowCloseButton = showCloseButton;
         Message = result.Message;
-        ClipCommandText = "Copy installer log to clipboard";
+        ClipCommandText = "Copy log";
         
         if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktopApp)
         {
@@ -183,52 +193,35 @@ public class MessageViewModel : ViewModelBase
                     {
                         Process.Start(new ProcessStartInfo()
                         {
-                           FileName = "explorer.exe",
-                           Arguments = data.TargetInstallPath
+                           FileName = data.TargetInstallPath,
+                           UseShellExecute = true
                         });
                     }
                     
                     if (AddShortcuts)
                     {
-                        Log.Information("Running add shortcuts script ...");
                         var sptPath = $"{Path.Join(data.TargetInstallPath, data.ReleaseInfo?.RuntimeFolderName ?? "SPT_Runtime")}";
-                        var shortcutResult = ProcessHelper.RunEmbeddedScript("desktop_shortcuts.ps1", sptPath);
-                        if (!shortcutResult.Succeeded)
-                        {
-                            Log.Fatal(shortcutResult.Message);
-                            return;
-                        }
+                        ShortcutHelper.CreateSptShortcuts(ShortcutHelper.DesktopPath, sptPath);
                     }
-                }
-                
-                try
-                {
-                    if (data.TargetInstallPath == Environment.CurrentDirectory)
-                    {
-                        return;
-                    }
-                    
-                    File.Copy(App.LogPath, Path.Join(data.TargetInstallPath, "spt-installer.log"), true);
-
-                    if (data.DebugMode)
-                    {
-                        File.Copy(App.LogDebugPath, Path.Join(data.TargetInstallPath, "spt-installer-debug.log"), true);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Failed to copy installer log to install path");
                 }
             };
         }
         
-        Task.Run(() =>
+        Task.Run(RefreshCache);
+
+        ClearCacheCommand = ReactiveCommand.CreateFromTask(async () =>
         {
-            CacheInfoText = "Getting cache size ...";
-            CacheCheckState = StatusSpinner.SpinnerState.Running;
-            
-            CacheInfoText = $"Cache Size: {DownloadCacheHelper.GetCacheSizeText()}";
-            CacheCheckState = StatusSpinner.SpinnerState.OK;
+            var confirmation = await DialogHostAvalonia.DialogHost.Show(new CustomControls.Dialogs.ConfirmationDialog(
+                $"Delete the {DownloadCacheHelper.GetCacheSizeText()} download cache?",
+                "A reinstall then downloads the patches and SPT again.", "Delete cache"));
+
+            if (!true.Equals(confirmation))
+            {
+                return;
+            }
+
+            DownloadCacheHelper.ClearCache();
+            RefreshCache();
         });
         
         if (result.Succeeded)

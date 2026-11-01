@@ -1,6 +1,7 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Serilog;
 using SPTInstaller.Helpers;
 using SPTInstaller.Models;
 using SPTInstaller.Models.Mirrors;
@@ -39,8 +40,9 @@ public class FreeSpacePreCheck : PreCheckBase
 
         try
         {
-            var installRoot = new DirectoryInfo(_internalData.TargetInstallPath).Root.Name;
-            var cacheRoot = new DirectoryInfo(DownloadCacheHelper.CachePath).Root.Name;
+            var installPath = _internalData.TargetInstallPath;
+            var installRoot = FileHelper.DriveRoot(installPath);
+            var cacheRoot = FileHelper.DriveRoot(DownloadCacheHelper.CachePath);
 
             var gameSize = DirectorySizeHelper.GetSizeOfDirectory(new DirectoryInfo(_internalData.OriginalGamePath));
 
@@ -49,56 +51,44 @@ public class FreeSpacePreCheck : PreCheckBase
                 return PreCheckResult.FromError("An error occurred while getting the game source directory size. This is most likely because the game is not installed");
             }
 
-            var patches = await PatchPlan.ForSelectedReleaseAsync(_internalData);
-            var sized = patches != null && patches.All(patch => patch.Size > 0);
+            var patches = (await PatchPlan.ForSelectedReleaseAsync(_internalData))?.Patches;
+            var documents = patches == null ? null : await DocumentsAsync(patches);
+            var sized = documents != null;
+            string[] downloadFolders = [DownloadCacheHelper.CachePath, DownloadCacheHelper.InstallFolderDownloads(installPath)];
 
             // Each step is extracted and then copied into the install folder before it is cleared, so the largest step counts twice
-            var patchingSpace = sized ? 2 * patches!.Select(patch => patch.Size!.Value).DefaultIfEmpty().Max() : FallbackPatchingSpace;
-            var downloadSpace = sized ? patches!.Sum(StillToDownload) : FallbackCacheSpace;
+            var patchingSpace = sized ? 2 * documents!.Select(document => document.Entries.Sum(entry => entry.Size ?? 0)).DefaultIfEmpty().Max() : FallbackPatchingSpace;
+            var downloadSpace = sized ? documents!.Sum(document => StillToDownload(document, downloadFolders)) : FallbackCacheSpace;
 
             var releaseSize = await ReleaseSizeAsync();
             var releaseExtract = releaseSize * ReleaseExtractRatio;
-            downloadSpace += StillToDownloadRelease(releaseSize);
+            downloadSpace += StillToDownloadRelease(releaseSize, downloadFolders);
 
             var installNeed = gameSize + patchingSpace + releaseExtract;
-            var sameDrive = string.Equals(installRoot, cacheRoot, StringComparison.OrdinalIgnoreCase);
 
-            List<string> installItems = [$"• Copy of the game: {Size(gameSize)}"];
-
-            if (patchingSpace > 0)
-            {
-                installItems.Add($"• Applying the patches, freed afterwards: {Size(patchingSpace)}");
-            }
-
-            installItems.Add($"• SPT itself: {Size(releaseExtract)}");
-
-            List<string> downloadItems = [$"• Patch and SPT downloads: {Size(downloadSpace)}"];
-
-            List<(string Root, string Role, long Need, long Free, List<string> Items)> drives = sameDrive
-                ? [(installRoot, "install folder and download cache", installNeed + downloadSpace, FreeSpace(installRoot), [.. installItems, .. downloadItems])]
-                :
-                [
-                    (installRoot, "install folder", installNeed, FreeSpace(installRoot), installItems),
-                    (cacheRoot, "download cache", downloadSpace, FreeSpace(cacheRoot), downloadItems),
-                ];
-
-            // Windows keeps the page file, updates and temp files on its own drive and slows down or fails when it runs low.
-            // The reserve is shown but not counted as needed, so it warns instead of blocking.
+            // What stays once the patching space and downloads are cleared
+            var installedSize = Size(gameSize + releaseExtract, 0);
+            Summary = $"{installedSize} installed";
             var systemRoot = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) ?? "C:\\";
-            var reserveItem = $"• Kept free for Windows (recommended): {Size(SystemDriveReserve)}";
-            var systemIndex = drives.FindIndex(drive => string.Equals(drive.Root, systemRoot, StringComparison.OrdinalIgnoreCase));
 
-            if (systemIndex >= 0)
+            var inInstallFolder = DownloadCacheHelper.DownloadsInInstallFolder;
+            var plan = Plan(inInstallFolder ? installRoot : cacheRoot);
+
+            // Points at the checkbox when the cache drive is what stops or endangers the install and moving the downloads would fix it
+            var checkboxHint = "";
+
+            if (!inInstallFolder && !SameRoot(installRoot, cacheRoot) && (plan.Short.Count > 0 || plan.SystemLeft < SystemDriveReserve))
             {
-                drives[systemIndex].Items.Add(reserveItem);
-            }
-            else
-            {
-                drives.Add((systemRoot, "Windows", 0, FreeSpace(systemRoot), [reserveItem]));
+                var local = Plan(installRoot);
+
+                if (local.Short.Count == 0 && (plan.Short.Count > 0 || local.SystemLeft >= SystemDriveReserve))
+                {
+                    checkboxHint = "\n\nTicking \"Download into the install folder\" under Details fixes this";
+                }
             }
 
-            var details = string.Join("\n\n", drives.Select(drive =>
-                $"**{drive.Root} ({drive.Role})**: "
+            var details = string.Join("\n\n", plan.Drives.Select(drive =>
+                $"{drive.Root} ({drive.Role}): "
                 + (drive.Need > 0 ? $"{Size(drive.Need)} needed, " : "")
                 + $"{Size(drive.Free)} free"
                 + (drive.Need > drive.Free ? $", {Size(drive.Need - drive.Free)} short" : "")
@@ -109,21 +99,77 @@ public class FreeSpacePreCheck : PreCheckBase
                 details += "\n\nThe exact patch sizes are not known, so a safe estimate is used";
             }
 
-            if (drives.Any(drive => drive.Need > drive.Free))
+            // The screen only has room for a short summary, so the breakdown goes to the log for support
+            Log.Information("Free space breakdown, downloads in {folder}\n{Details}", DownloadCacheHelper.DownloadPath, details);
+
+            if (plan.Short.Count > 0)
             {
-                return PreCheckResult.FromError($"Not enough free space for this install\n\n{details}");
+                var lines = plan.Short.Select(drive =>
+                    $"{drive.Root} needs {Size(drive.Need, 0)} for the {drive.Role} but only has {Size(drive.Free, 0)} free");
+
+                return PreCheckResult.FromError(
+                    $"{string.Join('\n', lines)}\n\nFree up {Size(plan.Short.Max(drive => drive.Need - drive.Free), 0)} or pick a folder on another drive"
+                    + checkboxHint);
             }
 
-            var systemLeft = FreeSpace(systemRoot) - (systemIndex >= 0 ? drives[systemIndex].Need : 0);
-
-            if (systemLeft < SystemDriveReserve)
+            if (plan.SystemLeft < SystemDriveReserve)
             {
                 return PreCheckResult.FromWarning(
-                    $"There is enough space for this install, but {systemRoot} will only have {Size(Math.Max(0, systemLeft))} left afterwards\n\n"
-                    + $"Windows needs room on {systemRoot} for the page file, updates and temporary files. At least {Size(SystemDriveReserve, 0)} free is recommended.\n\n{details}");
+                    $"{systemRoot} will have {Size(Math.Max(0, plan.SystemLeft), 0)} left after installing\n\n"
+                    + $"Windows needs about {Size(SystemDriveReserve, 0)} there for the page file, updates and temporary files. You can still install, but freeing some space first is recommended"
+                    + checkboxHint);
             }
 
-            return PreCheckResult.FromSuccess($"There is enough space available for this install\n\n{details}");
+            return PreCheckResult.FromSuccess($"SPT takes about {installedSize} once installed\n\n"
+                + string.Join('\n', plan.Drives.Where(drive => drive.Need > 0).Select(drive =>
+                    $"{drive.Root} has {Size(drive.Free, 0)} free, {Size(drive.Need, 0)} is needed while installing")));
+
+            SpacePlan Plan(string downloadRoot)
+            {
+                List<string> installItems = [$"• Copy of the game: {Size(gameSize)}"];
+
+                if (patchingSpace > 0)
+                {
+                    installItems.Add($"• Applying the patches, freed afterwards: {Size(patchingSpace)}");
+                }
+
+                installItems.Add($"• SPT itself: {Size(releaseExtract)}");
+
+                List<string> downloadItems = [$"• Patch and SPT downloads: {Size(downloadSpace)}"];
+
+                List<DriveNeed> drives = SameRoot(installRoot, downloadRoot)
+                    ? [new(installRoot, "install folder and downloads", installNeed + downloadSpace, FreeSpace(installRoot), [.. installItems, .. downloadItems])]
+                    :
+                    [
+                        new(installRoot, "install folder", installNeed, FreeSpace(installRoot), installItems),
+                        new(downloadRoot, "download cache", downloadSpace, FreeSpace(downloadRoot), downloadItems),
+                    ];
+
+                var shortDrives = drives.Where(drive => drive.Need > drive.Free).ToList();
+
+                if (!OperatingSystem.IsWindows())
+                {
+                    return new SpacePlan(drives, shortDrives, long.MaxValue);
+                }
+
+                // Windows keeps the page file, updates and temp files on its own drive and slows down or fails when it runs low.
+                // The reserve is shown but not counted as needed, so it warns instead of blocking.
+                var reserveItem = $"• Kept free for Windows (recommended): {Size(SystemDriveReserve)}";
+                var system = drives.Find(drive => SameRoot(drive.Root, systemRoot));
+
+                if (system != null)
+                {
+                    system.Items.Add(reserveItem);
+                }
+                else
+                {
+                    drives.Add(new(systemRoot, "Windows", 0, FreeSpace(systemRoot), [reserveItem]));
+                }
+
+                var systemLeft = FreeSpace(systemRoot) - (system?.Need ?? 0);
+
+                return new SpacePlan(drives, shortDrives, systemLeft);
+            }
         }
         catch (Exception ex)
         {
@@ -131,19 +177,50 @@ public class FreeSpacePreCheck : PreCheckBase
         }
     }
 
+    private record DriveNeed(string Root, string Role, long Need, long Free, List<string> Items);
+
+    private record SpacePlan(List<DriveNeed> Drives, List<DriveNeed> Short, long SystemLeft);
+
+    private static bool SameRoot(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    private static IEnumerable<FileInfo> FilesIn(string[] folders, string pattern) => folders
+        .Select(folder => new DirectoryInfo(folder))
+        .Where(folder => folder.Exists)
+        .SelectMany(folder => folder.GetFiles(pattern));
+
     /// <summary>
     /// Only what is not on disk yet. A finished or chunked part file already holds the full size, a streamed one what it got so far.
     /// </summary>
-    private static long StillToDownload(PatchInfo patch)
+    private static long StillToDownload(PatchDocument document, string[] folders)
     {
-        var name = DownloadCacheHelper.PatcherFileName(patch.SourceClientVersion, patch.TargetClientVersion);
-        var cache = new DirectoryInfo(DownloadCacheHelper.CachePath);
+        return document.Entries.Where(entry => entry.Blob != null).DistinctBy(entry => entry.Blob).Sum(entry =>
+        {
+            var onDisk = FilesIn(folders, $"{entry.Blob}*").Select(file => file.Length).DefaultIfEmpty().Max();
 
-        var onDisk = cache.Exists
-            ? cache.GetFiles($"{name}*").Select(file => file.Length).DefaultIfEmpty().Max()
-            : 0;
+            return Math.Max(0, (entry.Size ?? 0) - onDisk);
+        });
+    }
 
-        return Math.Max(0, patch.Size!.Value - onDisk);
+    /// <summary>
+    /// The documents of the patches the install needs, or null when one could not be fetched
+    /// </summary>
+    private static async Task<List<PatchDocument>?> DocumentsAsync(List<PatchInfo> patches)
+    {
+        List<PatchDocument> documents = [];
+
+        foreach (var patch in patches)
+        {
+            var document = (await PatchDocuments.GetAsync(patch, PatchDocuments.DocumentLinks(patch.Mirrors), new Progress<double>())).Document;
+
+            if (document == null)
+            {
+                return null;
+            }
+
+            documents.Add(document);
+        }
+
+        return documents;
     }
 
     private async Task<long> ReleaseSizeAsync()
@@ -155,21 +232,14 @@ public class FreeSpacePreCheck : PreCheckBase
     }
 
     // The release is cached as "SPT" whatever its version, so only a file of exactly this size counts as this one
-    private static long StillToDownloadRelease(long releaseSize)
+    private static long StillToDownloadRelease(long releaseSize, string[] folders)
     {
-        var cache = new DirectoryInfo(DownloadCacheHelper.CachePath);
-
-        if (!cache.Exists)
-        {
-            return releaseSize;
-        }
-
-        if (cache.GetFiles("SPT").Any(file => file.Length == releaseSize))
+        if (FilesIn(folders, "SPT").Any(file => file.Length == releaseSize))
         {
             return 0;
         }
 
-        var partial = cache.GetFiles("SPT.*.part").Select(file => file.Length).Where(length => length <= releaseSize)
+        var partial = FilesIn(folders, "SPT.*.part").Select(file => file.Length).Where(length => length <= releaseSize)
             .DefaultIfEmpty().Max();
 
         return releaseSize - partial;

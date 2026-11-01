@@ -14,26 +14,24 @@ namespace SPTInstaller;
 
 public partial class App : Application
 {
-    public static string LogPath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "spt-installer", "spt-installer.log");
-    public static string LogDebugPath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "spt-installer", "spt-installer-debug.log");
+    public static string LogPath = Path.Join(Path.GetTempPath(), "spt-installer", "spt-installer.log");
+    public static string LogDebugPath = Path.Join(Path.GetTempPath(), "spt-installer", "spt-installer-debug.log");
     
     public static void ReLaunch(bool debug, string installPath = "")
     {
-        var installerPath = Path.Join(Environment.CurrentDirectory, "SPTInstaller.exe");
+        // The exe can be renamed, for example "SPTInstaller (1).exe" from a second download
+        var installerPath = Environment.ProcessPath ?? Path.Join(AppContext.BaseDirectory, "SPTInstaller.exe");
         
         var args = new StringBuilder()
             .Append(debug ? "debug " : "")
             .Append(!string.IsNullOrEmpty(installPath) ? $"installPath=\"{installPath}\"" : "")
             .ToString();
         
-        Process.Start(new ProcessStartInfo()
+        _ = SelfUpdater.HandOverAsync(new ProcessStartInfo()
         {
             FileName = installerPath,
             Arguments = args
         });
-        
-        Environment.Exit(0);
     }
     
     public override void Initialize()
@@ -51,6 +49,7 @@ public partial class App : Application
             System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown");
 
         DownloadCacheHelper.ClearPartialDownloads();
+        SelfUpdater.CleanUpPrevious();
     }
     
     public override void OnFrameworkInitializationCompleted()

@@ -1,7 +1,5 @@
 ﻿using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -14,6 +12,7 @@ using SPTInstaller.Controllers;
 using SPTInstaller.CustomControls;
 using SPTInstaller.CustomControls.Dialogs;
 using SPTInstaller.Helpers;
+using SPTInstaller.Installer_Tasks.PreChecks;
 using SPTInstaller.Models;
 using SPTInstaller.Models.ReleaseInfo;
 using System.Text.Json;
@@ -30,9 +29,135 @@ public class PreChecksViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _hasPreCheckSelected, value);
     }
     
-    public ObservableCollection<PreCheckBase> PreChecks { get; set; } = new(ServiceHelper.GetAll<PreCheckBase>());
+    public ObservableCollection<PreCheckBase> PreChecks { get; } =
+        new(ServiceHelper.Get<InstallController>()!.PreChecks.Cast<PreCheckBase>());
     
-    public ObservableCollection<InstallChannel> Channels { get; } = new();
+    private readonly List<InstallChannel> _channels = [];
+
+    public ObservableCollection<ReleaseInfo> Versions { get; } = new();
+
+    public ObservableCollection<DownloadServer> Servers { get; } = new();
+
+    private ReleaseInfo? _selectedVersion;
+
+    public ReleaseInfo? SelectedVersion
+    {
+        get => _selectedVersion;
+        set
+        {
+            // The wheel and arrow keys can reach an entry the list has disabled.
+            // The list only follows a value that changed, so the pick is taken and then undone
+            if (value != null && !value.Selectable)
+            {
+                var kept = _selectedVersion;
+                this.RaiseAndSetIfChanged(ref _selectedVersion, value);
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    _selectedVersion = kept;
+                    this.RaisePropertyChanged(nameof(SelectedVersion));
+                });
+
+                return;
+            }
+
+            var previous = _selectedVersion;
+            this.RaiseAndSetIfChanged(ref _selectedVersion, value);
+
+            if (value == null)
+            {
+                return;
+            }
+
+            if (value.LinuxIncompatible)
+            {
+                Log.Warning("SPT {version} is not Linux compatible, it was picked in debug mode", value.SPTVersion);
+            }
+
+            if ((value.Legacy || value.LinuxIncompatible) && previous != null && !_revertingVersion && !_acceptedVersions.Contains(value))
+            {
+                Dispatcher.UIThread.Post(() => ConfirmVersionAsync(value, previous));
+            }
+
+            Servers.Clear();
+
+            var channels = _channels.Where(channel => channel.Release == value).ToList();
+
+            if (channels.Count > 1)
+            {
+                Servers.Add(new DownloadServer { Name = "Automatic" });
+            }
+
+            foreach (var channel in channels)
+            {
+                Servers.Add(new DownloadServer { Name = channel.MirrorName, Channel = channel });
+            }
+
+            // The choice carries over to other versions
+            SelectedServer = Servers.FirstOrDefault(server => server.Channel != null && server.Name == DownloadSources.Preferred)
+                             ?? Servers.FirstOrDefault();
+        }
+    }
+
+    private DownloadServer? _selectedServer;
+
+    public DownloadServer? SelectedServer
+    {
+        get => _selectedServer;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _selectedServer, value);
+
+            if (value == null)
+            {
+                return;
+            }
+
+            if (Servers.Count > 1)
+            {
+                DownloadSources.Preferred = value.Channel?.MirrorName;
+            }
+
+            SelectedChannel = value.Channel ?? Servers.First(server => server.Channel != null).Channel;
+        }
+    }
+
+    private readonly HashSet<ReleaseInfo> _acceptedVersions = [];
+
+    // Going back can land on another release that warns, which must not ask again or the two prompts loop
+    private bool _revertingVersion;
+
+    private async void ConfirmVersionAsync(ReleaseInfo release, ReleaseInfo previous)
+    {
+        const string legacyText = "No support is given for legacy releases in the official SPT Discord.";
+
+        var confirmation = await DialogHost.Show(new ConfirmationDialog(
+            release.LinuxIncompatible ? $"SPT {release.SPTVersion} is not Linux compatible" : $"SPT {release.SPTVersion} is a legacy release",
+            release.LinuxIncompatible
+                ? "It is missing some or all native Linux binaries, so the install may not be usable."
+                  + (release.Legacy ? $"\n\n{legacyText}" : "")
+                : legacyText,
+            $"Use {release.SPTVersion}", "Go back"));
+
+        if (true.Equals(confirmation))
+        {
+            _acceptedVersions.Add(release);
+
+            if (release.Legacy)
+            {
+                Log.Warning("LEGACY RELEASE {version} picked by the user, it is unsupported", release.SPTVersion);
+            }
+
+            return;
+        }
+
+        if (SelectedVersion == release)
+        {
+            _revertingVersion = true;
+            SelectedVersion = previous;
+            _revertingVersion = false;
+        }
+    }
 
     private InstallChannel _selectedChannel;
 
@@ -53,6 +178,7 @@ public class PreChecksViewModel : ViewModelBase
             if (value?.Release != null)
             {
                 _installButtonRelease = value.Release;
+                ApplyRuntimeChecks(value.Release);
             }
 
             // Requirements are per release, so a version picked by the user reruns the checks. The first pick is
@@ -73,14 +199,115 @@ public class PreChecksViewModel : ViewModelBase
 
     private ReleaseInfo _installButtonRelease;
 
+    private void ApplyRuntimeChecks(ReleaseInfo release)
+    {
+        var installer = ServiceHelper.Get<InstallController?>();
+        var requirements = release.RequiredRuntimes.Count > 0 ? release.RequiredRuntimes : [.. RuntimePreCheck.Defaults];
+
+        if (installer == null || !installer.SetRuntimeRequirements(requirements))
+        {
+            return;
+        }
+
+        PreChecks.Clear();
+
+        foreach (var check in installer.PreChecks.Cast<PreCheckBase>())
+        {
+            PreChecks.Add(check);
+        }
+
+        HasPreCheckSelected = PreChecks.Any(check => check.IsSelected);
+    }
+
     private bool _channelsLoaded;
 
-    private bool _showChannels;
+    public override InstallerStep Step => InstallerStep.Checks;
 
-    public bool ShowChannels
+    private string _headerTitle = "Running checks";
+
+    public string HeaderTitle
     {
-        get => _showChannels;
-        set => this.RaiseAndSetIfChanged(ref _showChannels, value);
+        get => _headerTitle;
+        set => this.RaiseAndSetIfChanged(ref _headerTitle, value);
+    }
+
+    private string? _releaseText;
+
+    public string? ReleaseText
+    {
+        get => _releaseText;
+        set => this.RaiseAndSetIfChanged(ref _releaseText, value);
+    }
+
+    public ICommand OpenCacheFolderCommand { get; } = ReactiveCommand.Create(() =>
+    {
+        Directory.CreateDirectory(DownloadCacheHelper.CachePath);
+        Process.Start(new ProcessStartInfo { FileName = DownloadCacheHelper.CachePath + Path.DirectorySeparatorChar, UseShellExecute = true });
+    });
+
+    public ICommand ShowCacheInfoCommand { get; } = ReactiveCommand.CreateFromTask(async () =>
+    {
+        await DialogHost.Show(new WhyCacheThoughDialog());
+    });
+
+    public ICommand ClearCacheCommand { get; set; }
+
+    // Only useful when the install folder is on another drive than the cache
+    public bool CanDownloadToInstallFolder => !string.IsNullOrEmpty(InstallPath)
+        && !string.Equals(FileHelper.DriveRoot(InstallPath), FileHelper.DriveRoot(DownloadCacheHelper.CachePath),
+            StringComparison.OrdinalIgnoreCase);
+
+    public bool DownloadToInstallFolder
+    {
+        get => ServiceHelper.Get<InternalData>()!.DownloadToInstallFolder;
+        set
+        {
+            ServiceHelper.Get<InternalData>()!.DownloadToInstallFolder = value;
+            this.RaisePropertyChanged();
+            ApplyDownloadPath();
+
+            var installer = ServiceHelper.Get<InstallController?>();
+
+            if (installer != null && _channelsLoaded)
+            {
+                Task.Run(async () =>
+                {
+                    var result = await installer.RunPreChecks();
+                    SelectFirstFailedCheck();
+                    UpdateInstallButton(result.Succeeded);
+                });
+            }
+        }
+    }
+
+    private void ApplyDownloadPath()
+    {
+        DownloadCacheHelper.DownloadPath = DownloadToInstallFolder && CanDownloadToInstallFolder
+            ? DownloadCacheHelper.InstallFolderDownloads(InstallPath)
+            : DownloadCacheHelper.CachePath;
+    }
+
+    private void RefreshCacheSize()
+    {
+        var size = DownloadCacheHelper.GetCacheSize();
+        CacheInfoText = DownloadCacheHelper.CacheSizeText(size);
+        HasCache = size != 0;
+    }
+
+    private bool _hasCache;
+
+    public bool HasCache
+    {
+        get => _hasCache;
+        set => this.RaiseAndSetIfChanged(ref _hasCache, value);
+    }
+
+    private bool _showVersions;
+
+    public bool ShowVersions
+    {
+        get => _showVersions;
+        set => this.RaiseAndSetIfChanged(ref _showVersions, value);
     }
 
     public ICommand SelectPreCheckCommand { get; set; }
@@ -103,7 +330,40 @@ public class PreChecksViewModel : ViewModelBase
     public string InstallPath
     {
         get => _installPath;
-        set => this.RaiseAndSetIfChanged(ref _installPath, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _installPath, value);
+            this.RaisePropertyChanged(nameof(InstallPathShort));
+        }
+    }
+
+    // The drive and the last folders say where it is, the middle is what gets long
+    public string InstallPathShort
+    {
+        get
+        {
+            const int maxLength = 34;
+
+            if (string.IsNullOrEmpty(InstallPath) || InstallPath.Length <= maxLength)
+            {
+                return InstallPath;
+            }
+
+            var root = Path.GetPathRoot(InstallPath) ?? "";
+            var parts = InstallPath[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+
+            for (var keep = Math.Min(2, parts.Length - 1); keep >= 1; keep--)
+            {
+                var shortened = Path.Join(root, "…", Path.Join(parts[^keep..]));
+
+                if (shortened.Length <= maxLength || keep == 1)
+                {
+                    return shortened;
+                }
+            }
+
+            return InstallPath;
+        }
     }
     
     private string _installButtonText;
@@ -130,43 +390,40 @@ public class PreChecksViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _cacheInfoText, value);
     }
     
-    private StatusSpinner.SpinnerState _cacheCheckState;
-    
-    public StatusSpinner.SpinnerState CacheCheckState
-    {
-        get => _cacheCheckState;
-        set => this.RaiseAndSetIfChanged(ref _cacheCheckState, value);
-    }
-    
     private StatusSpinner.SpinnerState _installButtonCheckState;
     
     public StatusSpinner.SpinnerState InstallButtonCheckState
     {
         get => _installButtonCheckState;
-        set => this.RaiseAndSetIfChanged(ref _installButtonCheckState, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _installButtonCheckState, value);
+            this.RaisePropertyChanged(nameof(ShowInstallSpinner));
+        }
     }
+
+    public bool ShowInstallSpinner => InstallButtonCheckState != StatusSpinner.SpinnerState.OK;
     
     /// <summary>
     /// Every published release crossed with its mirrors, so a new release or mirror shows up without an
-    /// installer change. The first mirror of the newest release is preselected.
+    /// installer change. The newest release is preselected.
     /// </summary>
     private async Task LoadChannelsAsync()
     {
-        // A damaged cached file is cleared and fetched once more before giving up
+        // A list that does not parse, for example one caught mid-upload, is fetched once more before giving up
         for (var attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                var releaseFile = await DownloadCacheHelper.GetOrDownloadFileAsync("release.json",
-                    DownloadCacheHelper.ReleaseUrls, null, DownloadCacheHelper.SuggestedTtl);
+                var releaseJson = await DownloadCacheHelper.GetMetadataAsync("release.json", DownloadCacheHelper.ReleaseUrls);
 
-                if (releaseFile == null)
+                if (releaseJson == null)
                 {
                     Log.Warning("Could not fetch release info for the version list");
                     return;
                 }
 
-                var manifest = JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(releaseFile.FullName), JsonOptions.Default);
+                var manifest = JsonSerializer.Deserialize<ReleaseManifest>(releaseJson, JsonOptions.Default);
 
                 if (manifest?.Releases == null || manifest.Releases.Count == 0)
                 {
@@ -193,13 +450,20 @@ public class PreChecksViewModel : ViewModelBase
 
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    foreach (var channel in channels)
+                    _channels.AddRange(channels);
+
+                    foreach (var release in channels.Select(channel => channel.Release).Distinct())
                     {
-                        Channels.Add(channel);
+                        Versions.Add(release);
                     }
 
-                    SelectedChannel = Channels.FirstOrDefault();
-                    ShowChannels = Channels.Count > 1;
+                    ShowVersions = Versions.Count > 1;
+
+                    // Coming back from Change keeps the version picked before, the list itself is fetched fresh
+                    var previous = ServiceHelper.Get<InternalData>()?.SelectedChannel?.Release?.SPTVersion;
+                    SelectedVersion = Versions.FirstOrDefault(release => release.SPTVersion == previous && release.Selectable)
+                                      ?? Versions.FirstOrDefault(release => !release.LinuxIncompatible)
+                                      ?? Versions.FirstOrDefault(release => release.Selectable);
                 });
 
                 return;
@@ -207,7 +471,6 @@ public class PreChecksViewModel : ViewModelBase
             catch (Exception ex)
             {
                 Log.Error(ex, "Could not build the version list");
-                DownloadCacheHelper.ClearMetadataCache();
             }
         }
     }
@@ -254,10 +517,10 @@ public class PreChecksViewModel : ViewModelBase
             return;
         }
 
-        InstallButtonText = checksPassed
-            ? $"Start Install: v{_installButtonRelease.SPTVersion}"
-            : "Fix the failed checks to install";
-        InstallButtonCheckState = checksPassed ? StatusSpinner.SpinnerState.OK : StatusSpinner.SpinnerState.Error;
+        ReleaseText = $"SPT {_installButtonRelease.SPTVersion}";
+        HeaderTitle = checksPassed ? "Ready to install" : "Fix the failed checks";
+        InstallButtonText = $"Install SPT {_installButtonRelease.SPTVersion}";
+        InstallButtonCheckState = StatusSpinner.SpinnerState.OK;
     }
     
     public PreChecksViewModel(IScreen host) : base(host)
@@ -286,6 +549,7 @@ public class PreChecksViewModel : ViewModelBase
         }
         
         InstallPath = data.TargetInstallPath;
+        ApplyDownloadPath();
         
         Log.Information($"Install Path: {FileHelper.GetRedactedPath(InstallPath)}");
 
@@ -363,7 +627,7 @@ public class PreChecksViewModel : ViewModelBase
             }
         });
         
-        StartInstallCommand = ReactiveCommand.Create(async () =>
+        StartInstallCommand = ReactiveCommand.Create(() =>
         {
             NavigateTo(new InstallViewModel(HostScreen));
         });
@@ -372,6 +636,25 @@ public class PreChecksViewModel : ViewModelBase
         {
             installer.RecheckRequested -= ReCheckRequested;
             NavigateTo(new InstallPathSelectionViewModel(HostScreen, InstallPath, autoAdvance: false));
+        });
+
+        ClearCacheCommand = ReactiveCommand.CreateFromTask(async () =>
+        {
+            var confirmation = await DialogHost.Show(new ConfirmationDialog(
+                $"Delete the {DownloadCacheHelper.GetCacheSizeText()} download cache?",
+                "Patches and the SPT download are fetched again on the next install.", "Delete cache"));
+
+            if (!true.Equals(confirmation))
+            {
+                return;
+            }
+
+            DownloadCacheHelper.ClearCache();
+            RefreshCacheSize();
+
+            // The free space check counts what still has to be downloaded, which just changed
+            var result = await installer.RunPreChecks();
+            UpdateInstallButton(result.Succeeded);
         });
         
         Task.Run(async () =>
@@ -389,7 +672,8 @@ public class PreChecksViewModel : ViewModelBase
 
             if (_installButtonRelease == null)
             {
-                InstallButtonText = "Could not get release metadata";
+                HeaderTitle = "Can't install";
+                InstallButtonText = Versions.Count > 0 ? "No Linux compatible release" : "Could not get release metadata";
                 InstallButtonCheckState = StatusSpinner.SpinnerState.Error;
                 return;
             }
@@ -397,13 +681,7 @@ public class PreChecksViewModel : ViewModelBase
             UpdateInstallButton(result.Succeeded);
         });
         
-        Task.Run(() =>
-        {
-            CacheInfoText = "Getting cache size ...";
-            CacheCheckState = StatusSpinner.SpinnerState.Running;
-            
-            CacheInfoText = $"Cache Size: {DownloadCacheHelper.GetCacheSizeText()}";
-            CacheCheckState = StatusSpinner.SpinnerState.OK;
-        });
+        CacheInfoText = "Checking size ...";
+        Task.Run(RefreshCacheSize);
     }
 }

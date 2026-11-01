@@ -19,6 +19,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: true
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -47,6 +49,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          submodules: true
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -74,6 +77,15 @@ jobs:
             -p:InformationalVersion=${{ steps.version.outputs.version }} \
             -o ./publish
 
+          dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r linux-x64 \
+            -p:PublishSingleFile=true --self-contained true \
+            -p:AssemblyVersion=${{ steps.version.outputs.version }} \
+            -p:FileVersion=${{ steps.version.outputs.version }} \
+            -p:InformationalVersion=${{ steps.version.outputs.version }} \
+            -o ./publish-linux
+
+          cp ./publish-linux/SPTInstaller ./publish/SPTInstaller
+
       - name: Collect release notes
         run: |
           git fetch --force --tags origin
@@ -93,9 +105,12 @@ jobs:
 
       - name: Write installer manifest
         run: |
+          sha256=$(sha256sum ./publish/SPTInstaller.exe | cut -d ' ' -f 1)
+          sha256_linux=$(sha256sum ./publish/SPTInstaller | cut -d ' ' -f 1)
+
           jq -R . "$RUNNER_TEMP/notes.txt" \
-            | jq -s --arg version "${{ steps.version.outputs.version }}" \
-                '{ LatestVersion: $version, Changes: . }' > ./publish/installer.json
+            | jq -s --arg version "${{ steps.version.outputs.version }}" --arg sha256 "$sha256" --arg sha256_linux "$sha256_linux" \
+                '{ LatestVersion: $version, Changes: ., Sha256: $sha256, Sha256Linux: $sha256_linux }' > ./publish/installer.json
 
           cat ./publish/installer.json
 
@@ -107,6 +122,11 @@ jobs:
           ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           aws s3 cp ./publish/SPTInstaller.exe "s3://${{ secrets.R2_BUCKET }}/SPTInstaller.exe" \
+            --endpoint-url "$ENDPOINT" \
+            --content-type application/octet-stream \
+            --cache-control "public, max-age=300"
+
+          aws s3 cp ./publish/SPTInstaller "s3://${{ secrets.R2_BUCKET }}/SPTInstaller" \
             --endpoint-url "$ENDPOINT" \
             --content-type application/octet-stream \
             --cache-control "public, max-age=300"
@@ -138,6 +158,8 @@ jobs:
             "$MIRROR_USER@$MIRROR_HOST" <<SFTP
           put ./publish/SPTInstaller.exe $MIRROR_ROOT/SPTInstaller.exe.part
           rename $MIRROR_ROOT/SPTInstaller.exe.part $MIRROR_ROOT/SPTInstaller.exe
+          put ./publish/SPTInstaller $MIRROR_ROOT/SPTInstaller.part
+          rename $MIRROR_ROOT/SPTInstaller.part $MIRROR_ROOT/SPTInstaller
           put ./publish/installer.json $MIRROR_ROOT/installer.json.part
           rename $MIRROR_ROOT/installer.json.part $MIRROR_ROOT/installer.json
           SFTP
@@ -148,7 +170,7 @@ jobs:
         run: |
           if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
             gh release edit "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt"
-            gh release upload "${{ github.ref_name }}" ./publish/SPTInstaller.exe --clobber
+            gh release upload "${{ github.ref_name }}" ./publish/SPTInstaller.exe ./publish/SPTInstaller --clobber
           else
-            gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt" --target ${{ github.sha }} ./publish/SPTInstaller.exe
+            gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt" --target ${{ github.sha }} ./publish/SPTInstaller.exe ./publish/SPTInstaller
           fi

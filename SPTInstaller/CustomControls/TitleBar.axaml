@@ -2,85 +2,89 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="SPTInstaller.CustomControls.TitleBar">
+             xmlns:models="using:SPTInstaller.Models"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="40"
+             x:Class="SPTInstaller.CustomControls.TitleBar"
+             x:Name="Root">
+    <UserControl.Styles>
+        <Style Selector="Border.step">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12 8" />
+        </Style>
+        <Style Selector="Border.step > TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Foreground" Value="{StaticResource Gray200Brush}" />
+        </Style>
+        <Style Selector="Border.step.done > TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Gray500Brush}" />
+        </Style>
+        <Style Selector="Border.step.current">
+            <Setter Property="Background" Value="{StaticResource SubtleBrush}" />
+        </Style>
+        <Style Selector="Border.step.current > TextBlock">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+        <Style Selector="Border.step.failed">
+            <Setter Property="Background" Value="#33FB2C36" />
+        </Style>
 
-    <!-- Transparent rather than unset: a null background is not hit-testable, so the drag never sees
-         the press. The Rectangle below still paints the visible colour. -->
-    <Grid ColumnDefinitions="AUTO,*,AUTO,AUTO" Background="Transparent">
+        <Style Selector="Button.window">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Width" Value="40" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource Gray400Brush}" />
+        </Style>
+        <Style Selector="Button.window:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource SubtleBrush}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.window.close:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#C42B1C" />
+        </Style>
+    </UserControl.Styles>
+    <Border Background="{StaticResource NavBrush}" BorderBrush="{StaticResource Gray800Brush}" BorderThickness="0 0 0 1"
+            Height="64">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Background="Transparent">
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="24 0 24 0" VerticalAlignment="Center"
+                        IsHitTestVisible="False">
+                <Image Source="avares://SPT.Theme/Images/spt-small.png" Width="32" Height="17" VerticalAlignment="Center"
+                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+                <TextBlock Text="Installer" FontSize="19" FontWeight="ExtraBold" Foreground="White"
+                           VerticalAlignment="Center" />
+            </StackPanel>
 
-        <Rectangle Grid.ColumnSpan="6" IsHitTestVisible="False"
-                   Fill="{Binding Background, RelativeSource={
-                      RelativeSource AncestorType=UserControl}}" />
+            <ItemsControl Grid.Column="1" ItemsSource="{Binding #Root.Steps}" VerticalAlignment="Center"
+                          IsHitTestVisible="False">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="2" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:StepItem">
+                        <Border Classes="step" Classes.current="{Binding IsCurrent}" Classes.done="{Binding IsDone}"
+                                Classes.failed="{Binding IsFailed}">
+                            <TextBlock Text="{Binding Name}" />
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-        <Label Content="{Binding Title, RelativeSource={
-			               RelativeSource AncestorType=UserControl}}"
-               IsHitTestVisible="False"
-               Foreground="{Binding Foreground, RelativeSource={
-			                  RelativeSource AncestorType=UserControl}}"
-               Background="Transparent"
-               VerticalContentAlignment="Center" />
+            <TextBlock Grid.Column="3" Text="{Binding #Root.Version}" FontSize="12"
+                       Foreground="{StaticResource Gray500Brush}" VerticalAlignment="Center" Margin="0 0 10 0"
+                       IsHitTestVisible="False" />
 
-        <!-- Minimize (-) Button -->
-        <Button Grid.Column="2"
-                Foreground="{Binding ButtonForeground, RelativeSource={
-												 RelativeSource AncestorType=UserControl}}"
-                Command="{Binding MinButtonCommand, RelativeSource={
-			                RelativeSource AncestorType=UserControl}}"
-                Background="Transparent"
-                HorizontalContentAlignment="Center"
-                VerticalContentAlignment="Center"
-                VerticalAlignment="Stretch"
-                CornerRadius="0"
-                Width="35">
-            <Viewbox Width="15" Height="15">
-                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Path Data="{StaticResource Minimize}"
-                          Fill="{Binding $parent[TextBlock].Foreground}"
-					/>
-				</TextBlock>
-			</Viewbox>
-            <Button.Styles>
-                <Style Selector="Button:pointerover /template/ ContentPresenter">
-                    <Setter Property="Background" Value="{StaticResource SPT_Brush_DarkGrayBlue}" />
-                    <Setter Property="BorderThickness" Value="0" />
-                </Style>
-                <Style Selector="Button:pressed /template/ ContentPresenter">
-                    <Setter Property="Background" Value="{StaticResource SPT_Background_Light}" />
-                </Style>
-            </Button.Styles>
-        </Button>
-
-        <!-- Close (X) Button -->
-        <Button Grid.Column="3"
-                Foreground="{Binding ButtonForeground, RelativeSource={
-				             RelativeSource AncestorType=UserControl}}"
-                Command="{Binding XButtonCommand, RelativeSource={
-			                RelativeSource AncestorType=UserControl}}"
-                Background="Transparent"
-                HorizontalContentAlignment="Center"
-                VerticalContentAlignment="Center"
-                VerticalAlignment="Stretch"
-                CornerRadius="0"
-                Width="35">
-			<Viewbox Width="15" Height="15">
-				<TextBlock>
-					<Path Data="{StaticResource Close}"
-					      Fill="{Binding $parent[TextBlock].Foreground}"
-					/>
-				</TextBlock>
-			</Viewbox>
-            <Button.Styles>
-                <Style Selector="Button:pointerover /template/ ContentPresenter">
-                    <Setter Property="Background" Value="IndianRed" />
-                    <Setter Property="BorderThickness" Value="0" />
-                </Style>
-                <Style Selector="Button:pressed /template/ ContentPresenter">
-                    <Setter Property="Background" Value="Crimson" />
-                </Style>
-            </Button.Styles>
-        </Button>
-
-    </Grid>
-
+            <Button Grid.Column="4" Classes="window" Command="{Binding #Root.MinButtonCommand}">
+                <PathIcon Data="{StaticResource Minimize}" Width="12" Height="12" />
+            </Button>
+            <Button Grid.Column="5" Classes="window close" Command="{Binding #Root.XButtonCommand}">
+                <PathIcon Data="{StaticResource Close}" Width="12" Height="12" />
+            </Button>
+        </Grid>
+    </Border>
 </UserControl>

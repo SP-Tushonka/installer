@@ -3,21 +3,68 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:cc="using:SPTInstaller.CustomControls"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             xmlns:models="using:SPTInstaller.Models"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="460"
              x:Class="SPTInstaller.Views.InstallView">
+    <Grid RowDefinitions="Auto,*">
+        <cc:PageHeader Icon="{StaticResource IconDownload}" Title="Installing" BadgeText="{Binding ReleaseText}"
+                       Subtitle="Keep this window open" />
 
-    <Grid ColumnDefinitions="*, 2*">
-        <cc:ProgressableTaskList Tasks="{Binding MyTasks}"
-                                 Padding="20"
-                                 Background="{StaticResource SPT_Background_Dark}"
-                                 PendingColor="Gray"
-                                 RunningColor="DodgerBlue"
-                                 CompletedColor="{StaticResource SPT_Brush_Yellow}" />
-        <cc:TaskDetails Grid.Column="1"
-                        Message="{Binding CurrentTask.StatusMessage}"
-                        Details="{Binding CurrentTask.StatusDetails}"
-                        Progress="{Binding CurrentTask.Progress}"
-                        IndeterminateProgress="{Binding CurrentTask.IndeterminateProgress}"
-                        ShowProgress="{Binding CurrentTask.ShowProgress}" />
+        <Border Grid.Row="1" Classes="content">
+            <Border Classes="panel" VerticalAlignment="Top">
+                <StackPanel>
+                    <Grid ColumnDefinitions="*,Auto" Margin="0 0 0 8">
+                        <TextBlock Classes="label" Text="{Binding CurrentTask.StatusMessage}" FontSize="15" />
+                        <TextBlock Grid.Column="1" Classes="mono muted" VerticalAlignment="Center"
+                                   Text="{Binding CurrentTask.Progress, StringFormat='{}{0}%'}"
+                                   IsVisible="{Binding CurrentTask.ShowProgress}" />
+                    </Grid>
+                    <ProgressBar Value="{Binding CurrentTask.Progress}"
+                                 IsIndeterminate="{Binding CurrentTask.IndeterminateProgress}"
+                                 IsVisible="{Binding CurrentTask.ShowProgress}" />
+                    <TextBlock Classes="mono muted" Margin="0 8 0 0" TextTrimming="CharacterEllipsis"
+                               Text="{Binding CurrentTask.StatusDetails}" />
+                    <ItemsControl Margin="26 10 0 0" ItemsSource="{Binding CurrentTask.PatchRows, FallbackValue={x:Null}}"
+                                  IsVisible="{Binding CurrentTask.ShowPatchRows, FallbackValue=False}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:PatchRow">
+                                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0 4">
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Gray300Brush}" />
+                                    <TextBlock Grid.Column="1" Classes="muted" Text="{Binding Text}"
+                                               FontSize="13" VerticalAlignment="Center" Margin="0 0 12 0" />
+                                    <ProgressBar Grid.Column="2" Value="{Binding Percent}" Width="160"
+                                                 VerticalAlignment="Center" Classes.done="{Binding Completed}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Grid ColumnDefinitions="Auto,Auto,*" Margin="0 12 0 0" IsVisible="{Binding ShowSources}">
+                        <TextBlock Classes="label" Text="Download from" VerticalAlignment="Center" Margin="0 0 10 0" />
+                        <ComboBox Grid.Column="1" MinWidth="150" ItemsSource="{Binding Sources}"
+                                  SelectedItem="{Binding SelectedSource}" />
+                        <TextBlock Grid.Column="2" Classes="muted" Margin="12 0 0 0" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" Text="{Binding SourceSpeeds}" />
+                    </Grid>
+
+                    <Border Classes="divider" Margin="0 14 0 6" />
+
+                    <ItemsControl ItemsSource="{Binding MyTasks}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:InstallerTaskBase">
+                                <Border Classes="divider" Padding="0 7">
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <cc:StatusSpinner State="{Binding State}" Margin="0 0 10 0" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource Gray300Brush}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Border>
     </Grid>
 </UserControl>

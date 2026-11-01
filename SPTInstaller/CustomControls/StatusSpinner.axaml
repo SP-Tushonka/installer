@@ -3,38 +3,14 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:convt="using:SPTInstaller.Converters"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             mc:Ignorable="d" d:DesignWidth="20" d:DesignHeight="20"
              x:Class="SPTInstaller.CustomControls.StatusSpinner">
 
     <UserControl.Resources>
         <convt:StatusSpinnerIsStateConverter x:Key="IsStateConverter" />
-        <convt:StatusSpinnerIsProcessingConverter x:Key="IsInProcessingStateConverter" />
     </UserControl.Resources>
     <UserControl.Styles>
-        <Style Selector="Arc.running">
-            <Setter Property="Stroke" Value="DodgerBlue" />
-        </Style>
-
-        <Style Selector="Path.ok">
-            <Setter Property="Data" Value="{StaticResource CircledCheck}" />
-            <Setter Property="Fill" Value="Green" />
-        </Style>
-
-        <Style Selector="Path.warning">
-            <Setter Property="Data" Value="{StaticResource CircledWarn}" />
-            <Setter Property="Fill" Value="Goldenrod" />
-        </Style>
-
-        <Style Selector="Path.error">
-            <Setter Property="Data" Value="{StaticResource CircledX}" />
-            <Setter Property="Fill" Value="Red" />
-        </Style>
-
         <Style Selector="Arc">
-            <Setter Property="Stroke" Value="Gray" />
-            <Setter Property="IsVisible"
-                    Value="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
-                                         Converter={StaticResource ResourceKey=IsInProcessingStateConverter}}" />
             <Style.Animations>
                 <Animation Duration="0:0:1" IterationCount="Infinite">
                     <KeyFrame Cue="0%">
@@ -48,27 +24,21 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid>
-        <Canvas Margin="0 3 0 0" Height="20" Width="20"
-                IsVisible="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
-                             Converter={StaticResource ResourceKey=IsInProcessingStateConverter}, ConverterParameter=invert}">
-            <Ellipse Fill="White" Height="15" Width="15" Canvas.Top="3" Canvas.Left="3" />
-            <Path StrokeThickness="2"
-                  Classes.ok="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
-                              Converter={StaticResource ResourceKey=IsStateConverter},
-                              ConverterParameter=OK}"
-                  Classes.warning="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
-                              Converter={StaticResource ResourceKey=IsStateConverter},
-                              ConverterParameter=Warning}"
-                  Classes.error="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
-                              Converter={StaticResource ResourceKey=IsStateConverter},
-                              ConverterParameter=Error}" />
-        </Canvas>
-
-        <Arc StartAngle="280" SweepAngle="80" Margin="0 3 0 0" StrokeThickness="3"
-             Width="20" Height="20" VerticalAlignment="Top"
-             Classes.running="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
-                              Converter={StaticResource ResourceKey=IsStateConverter},
-                              ConverterParameter=Running}" />
-    </Grid>
+    <Panel Width="16" Height="16" VerticalAlignment="Center">
+        <Arc StartAngle="280" SweepAngle="100" StrokeThickness="2.5" Stroke="{StaticResource AccentBrush}"
+             IsVisible="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
+                         Converter={StaticResource IsStateConverter}, ConverterParameter=Running}" />
+        <PathIcon Classes="state" Data="{StaticResource IconCircleOutline}" Foreground="{StaticResource Gray600Brush}"
+                  IsVisible="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
+                              Converter={StaticResource IsStateConverter}, ConverterParameter=Pending}" />
+        <PathIcon Classes="state" Data="{StaticResource IconCheckCircle}" Foreground="{StaticResource SuccessBrush}"
+                  IsVisible="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
+                              Converter={StaticResource IsStateConverter}, ConverterParameter=OK}" />
+        <PathIcon Classes="state" Data="{StaticResource IconAlert}" Foreground="{StaticResource WarningBrush}"
+                  IsVisible="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
+                              Converter={StaticResource IsStateConverter}, ConverterParameter=Warning}" />
+        <PathIcon Classes="state" Data="{StaticResource IconCloseCircle}" Foreground="{StaticResource DangerBrush}"
+                  IsVisible="{Binding State, RelativeSource={RelativeSource AncestorType=UserControl},
+                              Converter={StaticResource IsStateConverter}, ConverterParameter=Error}" />
+    </Panel>
 </UserControl>

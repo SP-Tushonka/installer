@@ -43,9 +43,11 @@ internal class Program
 
 #if !TEST
         ServiceHelper.Register<PreCheckBase, GameInstalledPreCheck>();
-        ServiceHelper.Register<PreCheckBase, NetFramework472PreCheck>();
-        ServiceHelper.Register<PreCheckBase, DesktopRuntimePreCheck>();
-        ServiceHelper.Register<PreCheckBase, AspNetCoreRuntimePreCheck>();
+        if (OperatingSystem.IsWindows())
+        {
+            ServiceHelper.Register<PreCheckBase, NetFramework472PreCheck>();
+        }
+
         ServiceHelper.Register<PreCheckBase, FreeSpacePreCheck>();
         ServiceHelper.Register<PreCheckBase, GameLauncherPreCheck>();
 
@@ -77,6 +79,11 @@ internal class Program
 
         var installer = new InstallController(tasks, preChecks);
 
+#if !TEST
+        // Swapped for the selected release's own runtimes once the version list loads
+        installer.SetRuntimeRequirements(RuntimePreCheck.Defaults);
+#endif
+
         // manually register install controller
         Locator.CurrentMutable.RegisterConstant(installer);
 
@@ -90,6 +97,7 @@ internal class Program
                 .RegisterView<Views.InstallerUpdateView, InstallerUpdateViewModel>()
                 .RegisterView<Views.MessageView, MessageViewModel>())
             .UsePlatformDetect()
+            .UseWaylandWithFallback()
             .LogToTrace();
     }
 }

@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:cc="using:SPTInstaller.CustomControls"
+             x:Class="SPTInstaller.CustomControls.InfoCard"
+             x:Name="Root">
+    <UserControl.Styles>
+        <Style Selector="cc|InfoCard Border#Card">
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
+        </Style>
+        <Style Selector="cc|InfoCard.warning Border#Card">
+            <Setter Property="Background" Value="{StaticResource NoticeBrush}" />
+        </Style>
+        <Style Selector="cc|InfoCard.danger Border#Card">
+            <Setter Property="Background" Value="{StaticResource DangerCardBrush}" />
+        </Style>
+        <Style Selector="cc|InfoCard TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="cc|InfoCard PathIcon.accent">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border x:Name="Card" CornerRadius="12">
+        <StackPanel Margin="16" Spacing="10">
+            <TextBlock x:Name="Heading" Text="{Binding #Root.Title}" FontSize="16" FontWeight="Bold"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding #Root.Title, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <ItemsControl ItemsSource="{Binding #Root.Lines}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="6" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <Grid ColumnDefinitions="16,*">
+                            <PathIcon Classes="accent" Data="{StaticResource IconArrowRight}" Width="12" Height="12"
+                                      VerticalAlignment="Top" Margin="0 4 0 0" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="1" Classes="line" Text="{Binding}" TextWrapping="Wrap"
+                                       Margin="4 0 0 0" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Border>
+</UserControl>

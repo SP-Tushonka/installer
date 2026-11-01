@@ -25,8 +25,6 @@ public class ReleaseCheckTask : InstallerTaskBase
         {
             SetStatus("Checking releases", "", null, ProgressStyle.Indeterminate);
             
-            var progress = new Progress<double>((d) => { SetStatus(null, null, (int)Math.Floor(d)); });
-            
             ReleaseInfo? sptReleaseInfo = null;
             PatchManifest? patchManifest = null;
             
@@ -38,31 +36,25 @@ public class ReleaseCheckTask : InstallerTaskBase
                 
                 try
                 {
-                    var sptReleaseInfoFile =
-                        await DownloadCacheHelper.GetOrDownloadFileAsync("release.json", DownloadCacheHelper.ReleaseUrls,
-                            progress, DownloadCacheHelper.SuggestedTtl);
-            
-                    if (sptReleaseInfoFile == null)
+                    var releaseJson = await DownloadCacheHelper.GetMetadataAsync("release.json", DownloadCacheHelper.ReleaseUrls);
+
+                    if (releaseJson == null)
                     {
-                        return Result.FromError("Failed to download release metadata, try clicking the 'Whats this' button below followed by the 'Clear Metadata cache' button");
+                        return Result.FromError("Failed to download the release list.\nCheck your connection and try again.");
                     }
             
                     SetStatus("Checking for Patches", "", null, ProgressStyle.Indeterminate);
             
-                    var sptPatchMirrorsFile =
-                        await DownloadCacheHelper.GetOrDownloadFileAsync("mirrors.json", DownloadCacheHelper.PatchManifestUrls,
-                            progress, DownloadCacheHelper.SuggestedTtl);
-            
-                    if (sptPatchMirrorsFile == null)
-                    {
-                        return Result.FromError("Failed to download patch mirror data, try clicking the 'Whats this' button below followed by the 'Clear Metadata cache' button");
-                    }
-                    
-                    var releaseManifest =
-                        JsonSerializer.Deserialize<ReleaseManifest>(File.ReadAllText(sptReleaseInfoFile.FullName), JsonOptions.Default);
+                    var mirrorsJson = await DownloadCacheHelper.GetMetadataAsync("mirrors.json", DownloadCacheHelper.PatchManifestUrls);
 
-                    patchManifest =
-                        JsonSerializer.Deserialize<PatchManifest>(File.ReadAllText(sptPatchMirrorsFile.FullName), JsonOptions.Default);
+                    if (mirrorsJson == null)
+                    {
+                        return Result.FromError("Failed to download the patch list.\nCheck your connection and try again.");
+                    }
+
+                    var releaseManifest = JsonSerializer.Deserialize<ReleaseManifest>(releaseJson, JsonOptions.Default);
+
+                    patchManifest = JsonSerializer.Deserialize<PatchManifest>(mirrorsJson, JsonOptions.Default);
 
                     // Nothing chosen yet means the first published release, which is the newest.
                     sptReleaseInfo = _data.SelectedChannel?.Release ?? releaseManifest?.Releases?.FirstOrDefault();
@@ -73,9 +65,8 @@ public class ReleaseCheckTask : InstallerTaskBase
                 {
                     if (retries >= 0)
                     {
-                        SetStatus("Clearing cache and retrying ...", "", null, ProgressStyle.Indeterminate);
+                        SetStatus("Retrying ...", "", null, ProgressStyle.Indeterminate);
                         await Task.Delay(1000);
-                        DownloadCacheHelper.ClearMetadataCache();
                         continue;
                     }
                     
@@ -94,30 +85,14 @@ public class ReleaseCheckTask : InstallerTaskBase
             int intSPTVersion = int.Parse(sptReleaseInfo.ClientVersion);
             int intGameVersion = int.Parse(_data.OriginalGameVersion);
             
-            if (intGameVersion < intSPTVersion)
+            var route = PatchPlan.Find(patchManifest, intGameVersion, intSPTVersion);
+
+            if (route.Patches == null)
             {
-                return Result.FromError("Your live game is out of date. Please update it using the game's launcher and try running the installer again");
+                return Result.FromError(route.Problem ?? PatchPlan.PatcherOutOfDate);
             }
 
-            _data.PatchChain = intGameVersion == intSPTVersion
-                ? []
-                : patchManifest.FindPath(intGameVersion, intSPTVersion) ?? [];
-
-            if (intGameVersion != intSPTVersion && _data.PatchChain.Count == 0)
-            {
-                // Patches start from the newest live client, so one starting past the user's means their game is behind.
-                if (patchManifest.Patches.Any(patch => patch.SourceClientVersion > intGameVersion))
-                {
-                    return Result.FromError("Your live game is out of date. Please update it using the game's launcher or Steam, then run the installer again.");
-                }
-
-                return Result.FromError(
-                    "The game has updated. The patcher needs to be updated before you can install." +
-                    "\n* There is no time frame provided as to when this will occur. It usually happens within 24 hours." +
-                    "\n* The installer will automatically use it when the patcher gets updated." +
-                    "\n* This does not mean a new version is being released." +
-                    "\n* The patcher is only for turning game files into the older version this install needs.");
-            }
+            _data.PatchChain = route.Patches;
 
             if (_data.PatchChain.Count > 1)
             {

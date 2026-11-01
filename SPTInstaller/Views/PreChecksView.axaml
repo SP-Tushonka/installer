@@ -3,110 +3,140 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:cc="using:SPTInstaller.CustomControls"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             xmlns:models="using:SPTInstaller.Models"
+             xmlns:ri="using:SPTInstaller.Models.ReleaseInfo"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="460"
              x:Class="SPTInstaller.Views.PreChecksView">
+    <Grid RowDefinitions="Auto,*">
+        <cc:PageHeader Icon="{StaticResource IconListCheck}" Title="{Binding HeaderTitle}">
+            <cc:PageHeader.Actions>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="icon" Command="{Binding LaunchWithDebug}" IsVisible="{Binding !Debugging}"
+                            ToolTip.Tip="Restart with debug logging">
+                        <PathIcon Data="{StaticResource Bug}" Width="15" Height="15" />
+                    </Button>
+                    <Button Classes="primary" Command="{Binding StartInstallCommand}" IsEnabled="{Binding AllowInstall}">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <cc:StatusSpinner State="{Binding InstallButtonCheckState}" IsVisible="{Binding ShowInstallSpinner}" />
+                            <PathIcon Data="{StaticResource IconDownload}" Width="13" Height="13" IsVisible="{Binding !ShowInstallSpinner}" />
+                            <TextBlock Text="{Binding InstallButtonText}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </cc:PageHeader.Actions>
+        </cc:PageHeader>
 
-    <!-- main UI grid -->
-    <Grid RowDefinitions="10, *, 10, Auto, 10" ColumnDefinitions="10, *, Auto, 10">
-
-        <!-- info card -->
-        <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" BoxShadow="1 1 10 0 black" CornerRadius="15">
-
-            <!-- main information grid -->
-            <Grid RowDefinitions="10, Auto, *, Auto, 10" ColumnDefinitions="10, 2*, Auto,*, 10">
-
-                <Label Grid.Row="1" Grid.Column="1" HorizontalAlignment="Center"
-                       Content="Details" FontSize="20" Margin="0 2 0 0"/>
-
-                <!-- selected precheck details grid -->
-                <cc:PreCheckDetails Grid.Row="2" Grid.Column="1"
-                                    PreChecks="{Binding PreChecks}"
-                                    HasSelection="{Binding HasPreCheckSelected}" />
-
-                <!-- info card vertical separator -->
-                <Rectangle Grid.Row="1" Grid.RowSpan="2" Grid.Column="2" VerticalAlignment="Stretch"
-                           Fill="Gray" Width="1" Margin="10 0" />
-
-                <!-- precheck list -->
-                <Grid Grid.Row="1" Grid.Column="3">
-                <Label  HorizontalAlignment="Center"
-                        Margin="0 2 0 0"
-                       Content="Pre-Checks" FontSize="20" 
-                       />
-                <Button Padding="10" x:Name="debugBtn"
-                        HorizontalAlignment="Right" VerticalAlignment="Top"
-                        Classes="icon"
-                        Command="{Binding LaunchWithDebug}"
-                        IsVisible="{Binding !Debugging}"
-                >
-                    <Path Data="{StaticResource Bug}" Fill="{Binding ElementName=debugBtn, Path=Foreground}"
-                    />
-                </Button>
-                </Grid>
-
-                <ScrollViewer Grid.Row="2" Grid.RowSpan="2" Grid.Column="3" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding PreChecks}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Spacing="5" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <cc:PreCheckItem PreCheckName="{Binding Name}"
-                                                 IsRequired="{Binding IsRequired}"
-                                                 IsSelected="{Binding IsSelected}"
-                                                 State="{Binding State}"
-                                                 SelectCommand="{Binding $parent[ItemsControl].DataContext.SelectPreCheckCommand}"
-                                                 HorizontalAlignment="Stretch" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-
-                <!-- cache info -->
-                <Border Grid.Row="3" Grid.Column="1" BorderBrush="Gray" BorderThickness="0 1 0 0" Margin="10 4 0 0">
-                    <cc:CacheInfo Padding="0 6 0 0" HorizontalAlignment="Left"
-                                  InfoText="{Binding CacheInfoText}" State="{Binding CacheCheckState}" />
+        <ScrollViewer Grid.Row="1" Background="{StaticResource Gray800Brush}" HorizontalScrollBarVisibility="Disabled">
+            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="1.35*,*" Margin="14">
+                <Border Classes="panel" Margin="0 0 12 0" VerticalAlignment="Stretch">
+                    <StackPanel>
+                        <TextBlock Classes="h2" Text="Pre-checks" />
+                        <ItemsControl ItemsSource="{Binding PreChecks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <cc:PreCheckItem PreCheckName="{Binding Name}"
+                                                     IsRequired="{Binding IsRequired}"
+                                                     IsSelected="{Binding IsSelected}"
+                                                     State="{Binding State}"
+                                                     Summary="{Binding Summary}"
+                                                     SelectCommand="{Binding $parent[ItemsControl].DataContext.SelectPreCheckCommand}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </Border>
 
+                <Border Grid.Column="1" Classes="panel">
+                    <StackPanel>
+                        <TextBlock Classes="h2" Text="Details" />
+
+                        <Border Classes="divider" Padding="0 0 0 8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="label" Text="Version" />
+                                <ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion}"
+                                          HorizontalAlignment="Stretch" IsVisible="{Binding ShowVersions}">
+                                    <ComboBox.Styles>
+                                        <Style Selector="ComboBoxItem">
+                                            <Setter Property="IsEnabled" Value="{Binding Selectable}" />
+                                        </Style>
+                                        <Style Selector="TextBlock.compatibility">
+                                            <Setter Property="Foreground" Value="{StaticResource Gray500Brush}" />
+                                        </Style>
+                                        <Style Selector="ComboBoxItem:selected TextBlock.compatibility">
+                                            <Setter Property="Foreground" Value="White" />
+                                        </Style>
+                                    </ComboBox.Styles>
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="ri:ReleaseInfo">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding SPTVersion}" VerticalAlignment="Center" />
+                                                <TextBlock Text="Legacy" FontSize="12" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource WarningBrush}" IsVisible="{Binding Legacy}" />
+                                                <TextBlock Classes="compatibility" Text="Not Linux compatible" FontSize="12" VerticalAlignment="Center"
+                                                           IsVisible="{Binding LinuxIncompatible}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Classes="muted" Text="{Binding ReleaseText}" IsVisible="{Binding !ShowVersions}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="divider" Padding="0 8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="label" Text="Download from" />
+                                <ComboBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
+                                          HorizontalAlignment="Stretch">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:DownloadServer">
+                                            <TextBlock Text="{Binding Name}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="divider" Padding="0 8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Classes="label" Text="Install folder" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="mono muted" Text="{Binding InstallPathShort}" TextTrimming="CharacterEllipsis"
+                                               ToolTip.Tip="{Binding InstallPath}"
+                                               VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Classes="link" Content="Change" Margin="10 0 0 0"
+                                            Command="{Binding ChangeInstallPathCommand}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Spacing="2" Margin="0 8 0 0">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Classes="label" Text="Download cache" VerticalAlignment="Center" />
+                                <Button Classes="icon" Padding="2" Command="{Binding ShowCacheInfoCommand}"
+                                        VerticalAlignment="Center" ToolTip.Tip="What is the cache for?">
+                                    <PathIcon Data="{StaticResource IconInfo}" Width="12" Height="12" />
+                                </Button>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <TextBlock Classes="muted" Text="{Binding CacheInfoText}" VerticalAlignment="Center" />
+                                <Button Classes="link" Content="Open" Command="{Binding OpenCacheFolderCommand}"
+                                        IsVisible="{Binding HasCache}" />
+                                <Button Classes="link" Content="Clear" Command="{Binding ClearCacheCommand}"
+                                        IsVisible="{Binding HasCache}" />
+                            </StackPanel>
+                            <CheckBox Content="Download into the install folder" Margin="0 6 0 0"
+                                      IsChecked="{Binding DownloadToInstallFolder}"
+                                      IsVisible="{Binding CanDownloadToInstallFolder}"
+                                      ToolTip.Tip="Saves the downloads next to SPT instead of on the cache drive. They are deleted once SPT is installed." />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- The selected check, a warning or failure picked automatically, as a full-width card -->
+                <cc:PreCheckDetails Grid.Row="1" Grid.ColumnSpan="2" Margin="0 12 0 0"
+                                    PreChecks="{Binding PreChecks}" HasSelection="{Binding HasPreCheckSelected}"
+                                    IsVisible="{Binding HasPreCheckSelected}" />
             </Grid>
-        </Border>
-
-        <!-- Install path info -->
-        <StackPanel Grid.Row="3" Grid.Column="1">
-            <StackPanel Orientation="Horizontal">
-                <Label Content="Install Path" FontSize="20" />
-                <Button Content="Change" Classes="link" VerticalAlignment="Bottom" Margin="0 0 0 -2" Padding="4 5 8 6"
-                        Command="{Binding ChangeInstallPathCommand}" />
-            </StackPanel>
-
-            <TextBlock TextWrapping="Wrap" Margin="3 0"
-                       Text="{Binding InstallPath}"
-                       Foreground="DodgerBlue" FontWeight="SemiBold" />
-            <!-- Hidden when there is nothing to choose between -->
-            <StackPanel Orientation="Horizontal" Spacing="10" Margin="0 8 0 0"
-                        IsVisible="{Binding ShowChannels}">
-                <Label Content="Version" FontSize="20" VerticalAlignment="Center" />
-
-                <ComboBox MinWidth="180"
-                          ItemsSource="{Binding Channels}"
-                          SelectedItem="{Binding SelectedChannel}" />
-            </StackPanel>
-        </StackPanel>
-
-        <!-- Start install button -->
-        <Button Grid.Column="2" Grid.Row="3" Padding="20 10"
-                IsEnabled="{Binding AllowInstall}"
-                FontSize="15" FontWeight="SemiBold"
-                Classes="yellow"
-                Command="{Binding StartInstallCommand}"
-                CornerRadius="15">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding InstallButtonText}" VerticalAlignment="Center" />
-                <cc:StatusSpinner State="{Binding InstallButtonCheckState}" Margin="2"
-                                  IsVisible="{Binding !AllowInstall}" />
-            </StackPanel>
-        </Button>
+        </ScrollViewer>
     </Grid>
 </UserControl>

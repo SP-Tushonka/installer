@@ -28,24 +28,42 @@ public abstract class InstallerTaskBase : ReactiveObject, IProgressableTask
     public bool IsCompleted
     {
         get => _isComleted;
-        private set => this.RaiseAndSetIfChanged(ref _isComleted, value);
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref _isComleted, value);
+            this.RaisePropertyChanged(nameof(State));
+        }
     }
-    
+
     private bool _hasErrors;
-    
+
     public bool HasErrors
     {
         get => _hasErrors;
-        private set => this.RaiseAndSetIfChanged(ref _hasErrors, value);
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref _hasErrors, value);
+            this.RaisePropertyChanged(nameof(State));
+        }
     }
-    
+
     private bool _isRunning;
-    
+
     public bool IsRunning
     {
         get => _isRunning;
-        private set => this.RaiseAndSetIfChanged(ref _isRunning, value);
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref _isRunning, value);
+            this.RaisePropertyChanged(nameof(State));
+        }
     }
+
+    public CustomControls.StatusSpinner.SpinnerState State =>
+        HasErrors ? CustomControls.StatusSpinner.SpinnerState.Error
+        : IsRunning ? CustomControls.StatusSpinner.SpinnerState.Running
+        : IsCompleted ? CustomControls.StatusSpinner.SpinnerState.OK
+        : CustomControls.StatusSpinner.SpinnerState.Pending;
     
     private int _progress;
     

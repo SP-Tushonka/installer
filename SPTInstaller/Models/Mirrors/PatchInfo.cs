@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace SPTInstaller.Models.Mirrors;
 
@@ -6,9 +6,9 @@ public class PatchInfo
 {
     public int SourceClientVersion { get; set; }
     public int TargetClientVersion { get; set; }
-    public string? Sha256 { get; set; }
-    public long? Size { get; set; }
-    public int? ChunkSize { get; set; }
-    public List<string>? ChunkHashes { get; set; }
+    /// <summary>SHA-256 of the patch document, hex</summary>
+    public string? Document { get; set; }
     public List<PatchInfoMirror> Mirrors { get; set; }
+
+    public string Route => $"{SourceClientVersion} → {TargetClientVersion}";
 }

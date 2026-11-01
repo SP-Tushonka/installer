@@ -2,7 +2,6 @@
 using Serilog;
 using SPTInstaller.Helpers;
 using SPTInstaller.Models;
-using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace SPTInstaller.Installer_Tasks.PreChecks;

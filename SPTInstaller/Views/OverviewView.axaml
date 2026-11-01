@@ -2,61 +2,43 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             xmlns:cc="using:SPTInstaller.CustomControls"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="460"
              x:Class="SPTInstaller.Views.OverviewView">
-    <Grid RowDefinitions="10,Auto,Auto,Auto,Auto,*,10" ColumnDefinitions="10,*,Auto,10">
-        
-        <!-- Overview text -->
-        <Label Grid.Row="1" Grid.Column="1" Content="This installer will:" FontSize="20" Margin="0 5"
-               Foreground="{StaticResource SPT_Yellow}"
-               />
-        
-        <!-- Overview info -->
-        <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2">
-            <Label>◉ Check dependencies are installed, such as .NET</Label>
-            <Label>◉ Automatically locate and copy your game files to the path you supply on the next page</Label>
-            <Label>◉ Downgrade your game files to the version we use, if needed</Label>
-            <Label>◉ Download and extract our latest runtime files</Label>
-        </StackPanel>
-        
-        <!-- Notes text -->
-        <Label Grid.Row="3" Grid.Column="1" Content="Additional Notes:" FontSize="20" Margin="0 5"
-               Foreground="{StaticResource SPT_Yellow}"
-               />
-        
-        <!-- Notes info -->
-        <StackPanel Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2">
-            <Label>◉ You do not need to install our runtime in the same drive as the game</Label>
-            <Label Margin="0" Padding="0">
-                <StackPanel Orientation="Horizontal">
-                    <Label VerticalAlignment="Center">◉ This tool does</Label>
-                    <TextBlock TextDecorations="Underline" FontWeight="SemiBold" Foreground="Crimson" VerticalAlignment="Center">NOT</TextBlock>
-                    <Label VerticalAlignment="Center">update an existing runtime install</Label>
-                </StackPanel>
-            </Label>
-            <Label Margin="0" Padding="0">
-                <StackPanel Orientation="Horizontal">
-                    <Label VerticalAlignment="Center">◉ Game updates</Label>
-                    <TextBlock TextDecorations="Underline" FontWeight="SemiBold" Foreground="Crimson" VerticalAlignment="Center">CANNOT</TextBlock>
-                    <Label VerticalAlignment="Center">affect this install of the runtime</Label>
-                </StackPanel>
-            </Label>
-        </StackPanel>
-        
-        <!-- Next button -->
-        <Button Grid.Row="5" Grid.Column="2"
-                MinWidth="100"
-                MinHeight="30"
-                FontSize="16"
-                CornerRadius="20"
-                FontWeight="SemiBold"
-                VerticalAlignment="Bottom"
-                HorizontalContentAlignment="Center"
-                VerticalContentAlignment="Center"
-                Classes="yellow"
-                Content="Next"
-                Command="{Binding NextCommand}"
-                IsEnabled="{Binding ValidPath}"
-        />
+    <Grid RowDefinitions="Auto,*">
+        <cc:PageHeader Icon="{StaticResource IconDownload}" Title="SPT Installer">
+            <cc:PageHeader.Actions>
+                <Button Classes="primary" Command="{Binding NextCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Get started" />
+                        <PathIcon Data="{StaticResource IconArrowRight}" Width="13" Height="13" />
+                    </StackPanel>
+                </Button>
+            </cc:PageHeader.Actions>
+        </cc:PageHeader>
+
+        <Border Grid.Row="1" Classes="content">
+            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*">
+                <Border Grid.ColumnSpan="2" Classes="panel" Margin="0 0 0 12">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Border Width="56" Height="56" CornerRadius="8" BorderThickness="1"
+                                BorderBrush="{StaticResource Gray700Brush}" Background="{StaticResource TileBrush}"
+                                Margin="0 0 16 0">
+                            <PathIcon Data="{StaticResource IconDownload}" Width="24" Height="24" Foreground="White" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                            <TextBlock Classes="h1" Text="Set up Single Player Tarkov" />
+                            <TextBlock Classes="body"
+                                       Text="The installer copies your game into a separate folder, downgrades it to the version SPT needs and adds SPT on top. Your live game stays as it is." />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <cc:InfoCard Grid.Row="1" Margin="0 0 6 0" Title="The installer will"
+                             Text="Check you have the right version of .NET installed&#10;Copy your live game into the folder you pick&#10;Patch that copy to the version SPT needs&#10;Download SPT and install it into that folder" />
+                <cc:InfoCard Grid.Row="1" Grid.Column="1" Margin="6 0 0 0" Kind="warning" Title="Things to note"
+                             Text="You need a legitimate copy of the game, installed and up to date&#10;SPT can go on a different drive from the game&#10;This does not update an existing SPT install&#10;Game updates don't affect SPT once it's installed" />
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

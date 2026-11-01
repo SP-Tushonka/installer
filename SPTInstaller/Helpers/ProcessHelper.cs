@@ -6,48 +6,8 @@ using SPTInstaller.Models;
 
 namespace SPTInstaller.Helpers;
 
-public enum PatcherExitCode
-{
-    ProgramClosed = 0,
-    Success = 10,
-    EftExeNotFound = 11,
-    NoPatchFolder = 12,
-    MissingFile = 13,
-    MissingDir = 14,
-    PatchFailed = 15
-}
-
 public static class ProcessHelper
 {
-    public static Result PatchClientFiles(FileInfo executable, DirectoryInfo workingDir)
-    {
-        if (!executable.Exists || !workingDir.Exists)
-        {
-            return Result.FromError(
-                $"Could not find executable ({executable.Name}) or working directory ({workingDir.Name})");
-        }
-        
-        var process = new Process();
-        process.StartInfo.FileName = executable.FullName;
-        process.StartInfo.WorkingDirectory = workingDir.FullName;
-        process.EnableRaisingEvents = true;
-        process.StartInfo.Arguments = "autoclose";
-        process.Start();
-        
-        process.WaitForExit();
-
-        return (PatcherExitCode)process.ExitCode switch
-        {
-            PatcherExitCode.Success => Result.FromSuccess("Patcher Finished Successfully, extracting release files"),
-            PatcherExitCode.ProgramClosed => Result.FromError("Patcher was closed before completing!"),
-            PatcherExitCode.EftExeNotFound => Result.FromError("The game executable is missing from the install path"),
-            PatcherExitCode.NoPatchFolder => Result.FromError("Patchers Folder called 'SPT_Patches' is missing"),
-            PatcherExitCode.MissingFile => Result.FromError("Vital game files were not found. The installer is unable to continue. Please reinstall the game and try again."),
-            PatcherExitCode.PatchFailed => Result.FromError("A patch failed to apply"),
-            _ => Result.FromError("An unknown error occurred in the patcher"),
-        };
-    }
-    
     public static void OpenUrl(string url)
     {
         try
@@ -123,34 +83,4 @@ public static class ProcessHelper
         return ReadProcessResult.FromSuccess(outputBuilder.ToString(), errorBuilder.ToString());
     }
 
-    public static Result RunEmbeddedScript(string scriptName, params string[] arguments)
-    {
-        var scriptFileInfo = new FileInfo(Path.Join(DownloadCacheHelper.CachePath, scriptName));
-
-        if (!FileHelper.StreamAssemblyResourceOut(scriptName, scriptFileInfo.FullName))
-        {
-            return Result.FromError($"Failed to prepare script file {scriptName}");
-        }
-
-        if (!File.Exists(scriptFileInfo.FullName))
-        {
-            return Result.FromError($"Script file {scriptName} not found");
-        }
-
-        var processInfo = new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            CreateNoWindow = true,
-            ArgumentList = {"-ExecutionPolicy", "Bypass", "-File", $"{scriptFileInfo.FullName}"}
-        };
-
-        foreach (var arg in arguments)
-        {
-            processInfo.ArgumentList.Add(arg);
-        }
-
-        Process.Start(processInfo);
-
-        return Result.FromSuccess();
-    }
 }

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
@@ -10,7 +10,7 @@
         <ApplicationIcon>Assets\spt_installer.ico</ApplicationIcon>
         <Configurations>Debug;Release;TEST</Configurations>
         <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
-        <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">2.300.0.0</AssemblyVersion>
+        <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">3.0.0.0</AssemblyVersion>
         <FileVersion Condition="'$(FileVersion)' == ''">$(AssemblyVersion)</FileVersion>
         <Company>SPT</Company>
     </PropertyGroup>
@@ -19,17 +19,12 @@
         <AvaloniaResource Include="Assets\**" />
         <None Remove=".gitignore" />
         <None Remove="Assets\spt_installer.ico" />
-        <None Remove="Resources\update.ps1" />
     </ItemGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="Resources\update.ps1" />
         <None Remove="Resources\7z.dll" />
         <EmbeddedResource Include="Resources\7z.dll" />
-        <None Remove="Resources\add_shortcuts.ps1" />
-        <None Remove="Resources\desktop_shortcuts.ps1" />
-        <EmbeddedResource Include="Resources\add_shortcuts.ps1" />
-        <EmbeddedResource Include="Resources\desktop_shortcuts.ps1" />
+        <EmbeddedResource Include="..\patcher\Patcher\PatchGenerator\Resources\7zz" LogicalName="7zz" />
     </ItemGroup>
 
     <ItemGroup>
@@ -37,13 +32,18 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="12.1.1" />
-        <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+        <ProjectReference Include="..\patcher\Patcher\PatcherUtils\PatcherUtils.csproj" />
+        <ProjectReference Include="..\patcher\Patcher\SPT.Theme\SPT.Theme.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" Version="12.1.4" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+        <PackageReference Include="Avalonia.Wayland" Version="12.1.4" />
         <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
-        <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.1" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+        <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.6" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
         <PackageReference Include="DialogHost.Avalonia" Version="0.12.3" />
-        <PackageReference Include="DynamicData" Version="9.4.33" />
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
         <PackageReference Include="SerilogTraceListener" Version="3.2.0" />
         <PackageReference Include="Squid-Box.SevenZipSharp" Version="1.6.2.24" />

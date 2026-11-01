@@ -3,62 +3,87 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:cc="using:SPTInstaller.CustomControls"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="460"
              x:Class="SPTInstaller.Views.MessageView">
-    <UserControl.Styles>
-        <Style Selector="Grid.error">
-            <Setter Property="Background" Value="#330000" />
-        </Style>
-        <Style Selector="Label.error">
-            <Setter Property="Foreground" Value="Crimson" />
-        </Style>
+    <Grid RowDefinitions="Auto,*">
+        <!-- Finished -->
+        <cc:PageHeader Icon="{StaticResource IconCheckCircle}" IconBrush="{StaticResource SuccessBrush}" Title="Installed"
+                       BadgeText="{Binding ReleaseText}" IsVisible="{Binding !HasErrors}" />
 
-    </UserControl.Styles>
+        <!-- Stopped -->
+        <cc:PageHeader Icon="{StaticResource IconAlertOctagon}" IconBrush="{StaticResource DangerBrush}"
+                       Title="Install stopped" IsDanger="True" IsVisible="{Binding HasErrors}">
+            <cc:PageHeader.Actions>
+                <Button Classes="primary" Command="{Binding RetryCommand}"
+                        IsVisible="{Binding RetryText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Data="{StaticResource IconRefresh}" Width="13" Height="13" />
+                        <TextBlock Text="{Binding RetryText}" />
+                    </StackPanel>
+                </Button>
+            </cc:PageHeader.Actions>
+        </cc:PageHeader>
 
-    <Grid ColumnDefinitions="*,AUTO,*" RowDefinitions="*,AUTO,20,AUTO,20,Auto,Auto,*"
-          Classes.error="{Binding HasErrors}">
+        <Border Grid.Row="1" Classes="content">
+            <Panel>
+                <Border Classes="panel" Padding="24 22" VerticalAlignment="Top" IsVisible="{Binding !HasErrors}">
+                    <StackPanel HorizontalAlignment="Center" Spacing="6">
+                        <Border Width="60" Height="60" CornerRadius="8" BorderThickness="1" HorizontalAlignment="Center"
+                                BorderBrush="{StaticResource Gray700Brush}" Background="{StaticResource TileBrush}"
+                                Margin="0 0 0 8">
+                            <PathIcon Data="{StaticResource IconCheckCircle}" Width="28" Height="28"
+                                      Foreground="{StaticResource SuccessBrush}" />
+                        </Border>
+                        <TextBlock Classes="h1" Text="{Binding SuccessTitle}" HorizontalAlignment="Center" />
+                        <TextBlock Classes="muted" HorizontalAlignment="Center"
+                                   Text="{Binding InstallPath, StringFormat='Installed to {0}'}" />
 
-        <Label Grid.Column="1" Grid.Row="1"
-               Classes.error="{Binding HasErrors}">
-            <TextBlock Text="{Binding Message}" FontSize="18"
-                       TextWrapping="Wrap"
-                       MaxWidth="500"
-                       HorizontalAlignment="Center" />
-        </Label>
+                        <StackPanel Orientation="Horizontal" Spacing="18" HorizontalAlignment="Center" Margin="0 12 0 4"
+                                    IsVisible="{Binding ShowOptions}">
+                            <CheckBox IsChecked="{Binding AddShortcuts}" Content="Add desktop shortcuts" />
+                            <CheckBox IsChecked="{Binding OpenInstallFolder}" Content="Open the install folder" />
+                        </StackPanel>
 
-        <StackPanel Grid.Column="1" Grid.Row="3" Orientation="Horizontal" Spacing="10"
-                    HorizontalAlignment="Center">
-            <Button Content="{Binding RetryText}" Command="{Binding RetryCommand}"
-                    FontSize="15" FontWeight="SemiBold"
-                    Classes="yellow"
-                    IsVisible="{Binding RetryText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                    VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                    Padding="20 10" />
-            <Button Content="Close" Command="{Binding CloseCommand}"
-                    FontSize="15" FontWeight="SemiBold"
-                    Classes.yellow="{Binding !HasErrors}"
-                    IsVisible="{Binding ShowCloseButton}"
-                    VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                    Padding="20 10" />
-        </StackPanel>
-        
-        <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Spacing="10">
-            <!-- The theme recolours checked content, a local foreground on the text keeps it readable -->
-            <CheckBox IsChecked="{Binding OpenInstallFolder}" IsVisible="{Binding ShowOptions}">
-                <TextBlock Text="Open Install Folder" Foreground="White" />
-            </CheckBox>
-            <CheckBox IsChecked="{Binding AddShortcuts}" IsVisible="{Binding ShowOptions}">
-                <TextBlock Text="Add Desktop Shortcuts" Foreground="White" />
-            </CheckBox>
-        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0 8 0 0">
+                            <Button Command="{Binding CopyLogFileToClipboard}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <PathIcon Data="{StaticResource IconCopy}" Width="13" Height="13" />
+                                    <TextBlock Text="{Binding ClipCommandText}" Foreground="White" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="primary" Content="Close" Command="{Binding CloseCommand}" MinWidth="90"
+                                    HorizontalContentAlignment="Center" />
+                        </StackPanel>
 
-        <cc:CacheInfo Grid.Row="7" Grid.ColumnSpan="3" Padding="10" Margin="10 0 0 0"
-                      VerticalAlignment="Bottom"
-                      InfoText="{Binding CacheInfoText}" State="{Binding CacheCheckState}"
-                      />
-        
-        <Button Grid.Row="7" Grid.Column="2" Classes="link" Content="{Binding ClipCommandText}"
-                Command="{Binding CopyLogFileToClipboard}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                />
+                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Margin="0 14 0 0"
+                                    IsVisible="{Binding ShowCache}">
+                            <TextBlock Classes="muted" FontSize="12"
+                                       Text="{Binding CacheInfoText, StringFormat='Download cache {0}, kept for reinstalls'}" />
+                            <Button Classes="link" Content="Clear" FontSize="12" Command="{Binding ClearCacheCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Stopped -->
+                <Grid ColumnDefinitions="1.4*,*" IsVisible="{Binding HasErrors}">
+                    <cc:InfoCard Kind="danger" Title="What happened"
+                                 Text="{Binding Message}" VerticalAlignment="Top" Margin="0 0 12 0" />
+                    <Border Grid.Column="1" Classes="panel" VerticalAlignment="Top">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="h2" Text="Need help?" Margin="0" />
+                            <TextBlock Classes="body" Text="{Binding HelpText}" />
+                            <Button Command="{Binding CopyLogFileToClipboard}" HorizontalAlignment="Stretch" Margin="0 6 0 0">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <PathIcon Data="{StaticResource IconCopy}" Width="13" Height="13" />
+                                    <TextBlock Text="{Binding ClipCommandText}" Foreground="White" />
+                                </StackPanel>
+                            </Button>
+                            <Button Content="Close" Command="{Binding CloseCommand}" HorizontalAlignment="Stretch"
+                                    IsVisible="{Binding ShowCloseButton}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Panel>
+        </Border>
     </Grid>
 </UserControl>

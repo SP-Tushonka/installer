@@ -11,7 +11,7 @@ public static class FileHelper
 {
     public static string GetRedactedPath(string path)
     {
-        var nameMatched = Regex.Match(path, @".:\\[uU]sers\\(?<NAME>[^\\]+)");
+        var nameMatched = Regex.Match(path, @"(.:\\[uU]sers\\|/home/)(?<NAME>[^\\/]+)");
         
         if (nameMatched.Success)
         {
@@ -21,10 +21,6 @@ public static class FileHelper
         
         return path;
     }
-    
-    public static Result CopyDirectoryWithProgress(DirectoryInfo sourceDir, DirectoryInfo targetDir,
-        IProgress<double> progress = null, string[] exclusions = null) =>
-        CopyDirectoryWithProgress(sourceDir, targetDir, (msg, prog) => progress?.Report(prog), exclusions);
     
     public static Result CopyDirectoryWithProgress(DirectoryInfo sourceDir, DirectoryInfo targetDir,
         Action<string, int> updateCallback = null, string[] exclusions = null)
@@ -129,7 +125,50 @@ public static class FileHelper
             return false;
         }
     }
-    
+
+    /// <summary>
+    ///     Mark a file as executable. Does nothing on Windows.
+    /// </summary>
+    /// <param name="path">File to mark</param>
+    /// <returns>False when the file could not be marked</returns>
+    public static bool MakeExecutable(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return true;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(path, File.GetUnixFileMode(path) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Could not mark {path} as executable", path);
+            return false;
+        }
+    }
+
+    /// <summary>
+    ///     Get the drive a path is on, or the mount on Linux. The path does not have to exist yet.
+    /// </summary>
+    /// <param name="path">Path to look up</param>
+    /// <returns>Root of the drive or mount</returns>
+    public static string DriveRoot(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return new DirectoryInfo(path).Root.Name;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+
+        return DriveInfo.GetDrives().Select(drive => drive.Name)
+            .Where(mount => fullPath == mount || fullPath.StartsWith(mount.TrimEnd('/') + '/', StringComparison.Ordinal))
+            .MaxBy(mount => mount.Length) ?? "/";
+    }
+
     /// <summary>
     /// Check if a path is problematic
     /// </summary>
@@ -183,7 +222,7 @@ public static class FileHelper
                     
                     break;
                 case PathCheckType.DriveRoot:
-                    if (Regex.Match(path.ToLower(), @"^\w:(\\|\/)$").Success)
+                    if (Regex.Match(path.ToLower(), @"^(\w:(\\|\/)|/)$").Success)
                     {
                         failedCheck = check;
                         return true;

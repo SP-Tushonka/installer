@@ -1,7 +1,15 @@
 ﻿using SPTInstaller.Interfaces;
 using SPTInstaller.Models;
+using System.Collections.ObjectModel;
 using System.Linq;
+using Avalonia.Threading;
+using ReactiveUI;
+using System.Threading;
 using System.Threading.Tasks;
+using PatchClient.Models;
+using PatcherUtils;
+using PatcherUtils.Model;
+using Serilog;
 using SPTInstaller.Helpers;
 
 namespace SPTInstaller.Installer_Tasks;
@@ -9,107 +17,73 @@ namespace SPTInstaller.Installer_Tasks;
 public class SetupClientTask : InstallerTaskBase
 {
     private InternalData _data;
-    
+
     public SetupClientTask(InternalData data) : base("Setup Client")
     {
         _data = data;
     }
-    
+
+    // The same counters patcher.exe shows, for the step being patched
+    public ObservableCollection<PatchRow> PatchRows { get; } = [];
+
+    private bool _showPatchRows;
+
+    public bool ShowPatchRows
+    {
+        get => _showPatchRows;
+        set => this.RaiseAndSetIfChanged(ref _showPatchRows, value);
+    }
+
     public override async Task<IResult> TaskOperation()
     {
         var targetInstallDirInfo = new DirectoryInfo(_data.TargetInstallPath);
-        
+
         var patcherOutputDir = new DirectoryInfo(Path.Join(_data.TargetInstallPath, "patcher"));
-        
-        var patcherEXE = new FileInfo(Path.Join(_data.TargetInstallPath, "patcher.exe"));
 
-        var patchesDir = new DirectoryInfo(Path.Join(_data.TargetInstallPath, "SPT_Patches"));
+        // The patcher library writes Patcher.log by default, the installer keeps one log instead
+        PatchLogger.Redirect = (level, message) => Log.Information("[Patcher {level}] {message}", level, message);
 
-        var patcherLog = Path.Join(_data.TargetInstallPath, "patcher.log");
-
-        foreach (var staleLog in Directory.GetFiles(_data.TargetInstallPath, "patcher-*.log"))
-        {
-            File.Delete(staleLog);
-        }
-        
         var progress = new Progress<double>((d) => { SetStatus(null, null, (int)Math.Floor(d)); });
-        
+
         SetStatus("Preparing 7z", "", null, ProgressStyle.Indeterminate);
-        
-        if (!FileHelper.StreamAssemblyResourceOut("7z.dll", Path.Join(DownloadCacheHelper.CachePath, "7z.dll")))
+
+        if (!ZipHelper.PrepareSevenZip())
         {
             return Result.FromError("Failed to prepare 7z");
         }
-        
-        for (var i = 0; i < _data.PatcherZips.Count; i++)
+
+        for (var i = 0; i < _data.Patches.Count; i++)
         {
-            var step = _data.PatcherZips.Count > 1 ? $" {i + 1}/{_data.PatcherZips.Count}" : "";
+            var patch = _data.Patches[i];
+            var step = _data.Patches.Count > 1 ? $" {i + 1}/{_data.Patches.Count} ({patch.Patch.Route})" : $" ({patch.Patch.Route})";
 
-            SetStatus($"Extracting Patcher{step}", "", 0);
+            SetStatus($"Preparing Patch{step}", "", 0);
 
-            if (patcherOutputDir.Exists)
+            var buildResult = PatchFolder.Build(patch, patcherOutputDir, progress);
+
+            if (!buildResult.Succeeded)
             {
-                patcherOutputDir.Delete(true);
+                return buildResult;
             }
-            
-            var extractPatcherResult = ZipHelper.Decompress(_data.PatcherZips[i], patcherOutputDir, progress);
-            
-            if (!extractPatcherResult.Succeeded)
-            {
-                return extractPatcherResult;
-            }
-            
-            SetStatus($"Copying Patcher{step}", "", 0);
-            
-            var patcherDirInfo =
-                patcherOutputDir.GetDirectories("Patcher*", SearchOption.TopDirectoryOnly).FirstOrDefault()
-                ?? patcherOutputDir;
-            
-            var copyPatcherResult =
-                FileHelper.CopyDirectoryWithProgress(patcherDirInfo, targetInstallDirInfo, progress);
-            
-            if (!copyPatcherResult.Succeeded)
-            {
-                return copyPatcherResult;
-            }
-            
-            SetStatus($"Running Patcher{step}", "", null, ProgressStyle.Indeterminate);
-            
-            patcherEXE.Refresh();
-            var patchingResult = ProcessHelper.PatchClientFiles(patcherEXE, targetInstallDirInfo);
-            
+
+            SetStatus($"Patching{step}", "", 0);
+
+            var patchingResult = ApplyPatches(targetInstallDirInfo, patcherOutputDir);
+            await Dispatcher.UIThread.InvokeAsync(() => ShowPatchRows = false);
+
             if (!patchingResult.Succeeded)
             {
                 return patchingResult;
             }
 
-            // The next step's patcher must only find its own patches
-            patchesDir.Refresh();
-
-            if (patchesDir.Exists)
-            {
-                patchesDir.Delete(true);
-            }
-
-            patcherEXE.Refresh();
-
-            if (patcherEXE.Exists)
-            {
-                patcherEXE.Delete();
-            }
-
-            // Each patcher writes patcher.log, so an earlier step's log is kept under its step number
-            if (i < _data.PatcherZips.Count - 1 && File.Exists(patcherLog))
-            {
-                File.Move(patcherLog, Path.Join(_data.TargetInstallPath, $"patcher-{i + 1}.log"), true);
-            }
+            patcherOutputDir.Delete(true);
         }
-        
+
         // extract release files
         SetStatus("Extracting Release", "", 0);
-        
+
         var extractReleaseResult = ZipHelper.Decompress(_data.SPTZipInfo, targetInstallDirInfo, progress);
-        
+
         if (!extractReleaseResult.Succeeded)
         {
             return extractReleaseResult;
@@ -118,28 +92,84 @@ public class SetupClientTask : InstallerTaskBase
         SetStatus("Creating Shortcuts", "", 0);
 
         var sptPath = $"{Path.Join(_data.TargetInstallPath, _data.ReleaseInfo?.RuntimeFolderName ?? "SPT_Runtime")}";
-        var shortcutResult = ProcessHelper.RunEmbeddedScript("add_shortcuts.ps1", _data.TargetInstallPath, sptPath);
-        if (!shortcutResult.Succeeded)
+
+        // Archives built on Windows have no exec bits to restore
+        if (!OperatingSystem.IsWindows() && Directory.Exists(sptPath))
         {
-            return shortcutResult;
+            foreach (var program in Directory.GetFiles(sptPath, "*.Linux"))
+            {
+                FileHelper.MakeExecutable(program);
+            }
         }
+
+        // SPT works without them, so a failure is logged instead of stopping the install
+        ShortcutHelper.CreateSptShortcuts(_data.TargetInstallPath, sptPath);
 
         // cleanup temp files
         SetStatus("Cleanup", "almost done :)", null, ProgressStyle.Indeterminate);
-        
-        if (_data.PatchNeeded)
+
+        patcherOutputDir.Refresh();
+
+        if (patcherOutputDir.Exists)
         {
-            if (patcherOutputDir.Exists)
+            patcherOutputDir.Delete(true);
+        }
+
+        return Result.FromSuccess("Setup complete. Happy playing!");
+    }
+
+    private Result ApplyPatches(DirectoryInfo gameDir, DirectoryInfo patchesDir)
+    {
+        if (!File.Exists(Path.Join(gameDir.FullName, "EscapeFromTarkov.exe")))
+        {
+            return Result.FromError("The game executable is missing from the install path");
+        }
+
+        var patcher = new PatchHelper(gameDir.FullName, null, patchesDir.FullName);
+        var shownPercent = -1;
+
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            PatchRows.Clear();
+            ShowPatchRows = true;
+        });
+
+        // It reports after every file, thousands per step, so the screen only follows whole percents.
+        // The first report comes before any file is done, with the full counts the rows take as totals.
+        patcher.ProgressChanged += (_, done, total, percent, _, counters) =>
+        {
+            if (Interlocked.Exchange(ref shownPercent, percent) == percent && done != total)
             {
-                patcherOutputDir.Delete(true);
+                return;
             }
 
-            if (patcherEXE.Exists)
+            Dispatcher.UIThread.Post(() =>
             {
-                patcherEXE.Delete();
-            }
-        }
-        
-        return Result.FromSuccess("Setup complete. Happy playing!");
+                if (PatchRows.Count == 0)
+                {
+                    foreach (var counter in counters)
+                    {
+                        PatchRows.Add(new PatchRow(counter.ItemText, counter.ItemValue));
+                    }
+                }
+
+                foreach (var counter in counters)
+                {
+                    PatchRows.FirstOrDefault(row => row.Name == counter.ItemText)?.Update(counter.ItemValue);
+                }
+
+                SetStatus(null, $"{done:N0} of {total:N0} files", percent, noLog: true);
+            });
+        };
+
+        var result = patcher.ApplyPatches();
+
+        return result.ExitCode switch
+        {
+            PatcherExitCode.Success => Result.FromSuccess(),
+            PatcherExitCode.MissingFile => Result.FromError(
+                "Vital game files were not found. The installer is unable to continue. Please reinstall the game and try again."),
+            _ => Result.FromError($"A patch failed to apply. {result.Message}"),
+        };
     }
 }
