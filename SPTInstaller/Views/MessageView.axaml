@@ -55,6 +55,13 @@
                                     HorizontalContentAlignment="Center" />
                         </StackPanel>
 
+                        <StackPanel Spacing="4" HorizontalAlignment="Center" Margin="0 14 0 0" IsVisible="{Binding IsLinux}">
+                            <TextBlock Classes="muted" FontSize="12" HorizontalAlignment="Center"
+                                       Text="The SPT launcher asks for umu, Proton and your Wine prefix when it first opens" />
+                            <Button Classes="link" Content="Open the community Linux guide (unofficial)" FontSize="12" HorizontalAlignment="Center"
+                                    Command="{Binding OpenLinuxGuideCommand}" />
+                        </StackPanel>
+
                         <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Margin="0 14 0 0"
                                     IsVisible="{Binding ShowCache}">
                             <TextBlock Classes="muted" FontSize="12"
@@ -78,6 +85,8 @@
                                     <TextBlock Text="{Binding ClipCommandText}" Foreground="White" />
                                 </StackPanel>
                             </Button>
+                            <Button Content="Linux troubleshooting (unofficial)" Command="{Binding OpenLinuxTroubleshootingCommand}"
+                                    HorizontalAlignment="Stretch" IsVisible="{Binding IsLinux}" />
                             <Button Content="Close" Command="{Binding CloseCommand}" HorizontalAlignment="Stretch"
                                     IsVisible="{Binding ShowCloseButton}" />
                         </StackPanel>

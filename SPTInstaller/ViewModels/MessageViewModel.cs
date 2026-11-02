@@ -63,7 +63,17 @@ public class MessageViewModel : ViewModelBase
 
     public string HelpText { get; } = ServiceHelper.Get<InternalData>()?.SelectedChannel?.IsLegacy == true
         ? "This is a legacy release, so the SPT support channel can't help with it. Your log may still show what went wrong."
-        : "Copy your log and share it in the SPT support channel.";
+        : OperatingSystem.IsWindows()
+            ? "Copy your log and share it in the SPT support channel."
+            : "Copy your log and share it in the SPT on Linux thread, under community support on the SPT Discord.";
+
+    public bool IsLinux { get; } = !OperatingSystem.IsWindows();
+
+    public ICommand OpenLinuxGuideCommand { get; } = ReactiveCommand.Create(() =>
+        ProcessHelper.OpenUrl("https://github.com/MadByteDE/SPT-Linux-Guide"));
+
+    public ICommand OpenLinuxTroubleshootingCommand { get; } = ReactiveCommand.Create(() =>
+        ProcessHelper.OpenUrl("https://github.com/MadByteDE/SPT-Linux-Guide/blob/main/docs/issues.md"));
 
     public string SuccessTitle => ReleaseText == null ? "SPT is installed" : $"{ReleaseText} is installed";
 

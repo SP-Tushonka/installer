@@ -43,7 +43,7 @@
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <PathIcon Data="{StaticResource IconFolder}" Width="14" Height="14" Margin="6 0 2 0"
                                           Foreground="{StaticResource Gray400Brush}" />
-                                <TextBox Grid.Column="1" Text="{Binding SelectedPath}" PlaceholderText="D:\SPT"
+                                <TextBox Grid.Column="1" Text="{Binding SelectedPath}" PlaceholderText="{Binding PathPlaceholder}"
                                          Background="Transparent" BorderThickness="0" MinHeight="0"
                                          TextChanged="TextBox_OnTextChanged" />
                                 <Button Grid.Column="2" Content="Browse" Padding="12 4" Command="{Binding SelectFolderCommand}" />
@@ -74,7 +74,7 @@
                 </Border>
 
                 <cc:InfoCard Kind="warning" Title="Things to note"
-                             Text="Pick an empty folder outside the game&#10;Avoid Downloads, Desktop and Program Files&#10;Downloads are cached in %appdata%\spt-installer, so a reinstall doesn't fetch them again" />
+                             Text="{Binding ThingsToNote}" />
             </StackPanel>
         </Border>
     </Grid>

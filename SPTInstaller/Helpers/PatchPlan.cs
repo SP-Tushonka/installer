@@ -19,9 +19,6 @@ public record PatchRoute(int GameClient, int ReleaseClient, List<PatchInfo>? Pat
 
 public static class PatchPlan
 {
-    public const string GameOutOfDate =
-        "Your live game is out of date. Please update it using the game's launcher or Steam, then run the installer again.";
-
     public const string PatcherOutOfDate =
         "The game has updated. The patcher needs to be updated before you can install." +
         "\n* There is no time frame provided as to when this will occur. It usually happens within 24 hours." +
@@ -43,10 +40,12 @@ public static class PatchPlan
             return new PatchRoute(gameClient, releaseClient, [], null);
         }
 
+        var latestClient = manifest.Patches.Select(patch => (int?)patch.SourceClientVersion).Max();
+
         // Patches only go back in time
         if (gameClient < releaseClient)
         {
-            return new PatchRoute(gameClient, releaseClient, null, GameOutOfDate);
+            return new PatchRoute(gameClient, releaseClient, null, GameOutOfDate(gameClient, latestClient, releaseClient));
         }
 
         var patches = manifest.FindPath(gameClient, releaseClient);
@@ -57,8 +56,17 @@ public static class PatchPlan
         }
 
         // Patches start from the newest live client, so one starting past the user's means their game is behind
-        return new PatchRoute(gameClient, releaseClient, null,
-            manifest.Patches.Any(patch => patch.SourceClientVersion > gameClient) ? GameOutOfDate : PatcherOutOfDate);
+        return new PatchRoute(gameClient, releaseClient, null, latestClient > gameClient
+            ? GameOutOfDate(gameClient, latestClient, releaseClient)
+            : $"This game is client {gameClient}.{(latestClient == null ? "" : $" The newest patch starts from client {latestClient}.")}\n\n{PatcherOutOfDate}");
+    }
+
+    private static string GameOutOfDate(int gameClient, int? latestClient, int releaseClient)
+    {
+        var latest = latestClient == null ? "the latest live client" : $"the latest live client, {latestClient},";
+
+        return $"This game is client {gameClient}, which is out of date. The installer starts from {latest} and patches a copy of it down to client {releaseClient}.\n\n"
+               + "Please update the game using its launcher or Steam, then run the installer again.";
     }
 
     /// <summary>

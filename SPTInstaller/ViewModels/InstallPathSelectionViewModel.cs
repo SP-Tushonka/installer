@@ -54,7 +54,20 @@ public class InstallPathSelectionViewModel : ViewModelBase
     }
 
     public override InstallerStep Step => InstallerStep.Folder;
-    
+
+    private static string HomeFolder => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    private static string LinuxDefaultPath => Path.Join(HomeFolder, "SPT");
+
+    public string PathPlaceholder { get; } = OperatingSystem.IsWindows() ? @"D:\SPT" : LinuxDefaultPath;
+
+    public string ThingsToNote { get; } = OperatingSystem.IsWindows()
+        ? "Pick an empty folder outside the game\nAvoid Downloads, Desktop and Program Files\nDownloads are cached in %appdata%\\spt-installer, so a reinstall doesn't fetch them again"
+        : $"Pick an empty folder outside the game\nAvoid Downloads and Desktop\nDownloads are cached in {Path.GetDirectoryName(DownloadCacheHelper.CachePath)!.Replace(HomeFolder, "~")}, so a reinstall doesn't fetch them again";
+
+    // A drive root can't be written to on Linux, so suggestions there point at the home folder
+    private string SuggestedPath => OperatingSystem.IsWindows() ? $"{Path.GetPathRoot(SelectedPath)}SPT" : LinuxDefaultPath;
+
     private string _selectedPath;
     
     public string SelectedPath
@@ -89,7 +102,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
         // Keeps a folder picked by hand when coming back from the pre-checks
         GamePath = _data.OriginalGamePath ?? PreCheckHelper.DetectOriginalGamePath();
         GameError = GamePath == null ? "Choose the folder that has EscapeFromTarkov.exe" : null;
-        SelectedPath = Environment.CurrentDirectory;
+        SelectedPath = OperatingSystem.IsWindows() ? Environment.CurrentDirectory : LinuxDefaultPath;
         ValidPath = false;
 
         if (!string.IsNullOrEmpty(installPath))
@@ -183,6 +196,12 @@ public class InstallPathSelectionViewModel : ViewModelBase
     
     public void ValidatePath()
     {
+        // Only a shell expands this, and Linux users expect to be able to type it
+        if (!OperatingSystem.IsWindows() && SelectedPath != null && (SelectedPath == "~" || SelectedPath.StartsWith("~/")))
+        {
+            SelectedPath = Path.Join(HomeFolder, SelectedPath[1..]);
+        }
+
         var root = string.IsNullOrEmpty(SelectedPath) ? null : FileHelper.DriveRoot(SelectedPath);
         var drive = root == null ? null : DriveInfo.GetDrives().FirstOrDefault(d => string.Equals(d.Name, root, StringComparison.OrdinalIgnoreCase));
         FreeSpaceText = drive == null || !drive.IsReady
@@ -211,7 +230,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
 
         if (game != null && string.Equals(selected, game, StringComparison.OrdinalIgnoreCase))
         {
-            ErrorMessage = $"This is the game's own folder. Choose an empty folder instead, like {Path.GetPathRoot(SelectedPath)}SPT";
+            ErrorMessage = $"This is the game's own folder. Choose an empty folder instead, like {SuggestedPath}";
             ValidPath = false;
             return;
         }
@@ -219,7 +238,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
         // The launcher's file check and updates can delete or overwrite an install that lives inside the game
         if (game != null && selected.StartsWith(game + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
-            ErrorMessage = $"This is inside the game's folder. Choose an empty folder outside it, like {Path.GetPathRoot(SelectedPath)}SPT";
+            ErrorMessage = $"This is inside the game's folder. Choose an empty folder outside it, like {SuggestedPath}";
             ValidPath = false;
             return;
         }
@@ -240,12 +259,25 @@ public class InstallPathSelectionViewModel : ViewModelBase
                 return;
             }
         }
-        
+
+        if (!FileHelper.CanInstallTo(SelectedPath))
+        {
+            ErrorMessage = $"The installer can't write to this folder. Choose one you own, like {SuggestedPath}";
+            ValidPath = false;
+            return;
+        }
+
         ValidPath = true;
     }
     
     private void AdjustInstallPath()
     {
+        // The home folder default is already the fallback, and a drive root can't be written to
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         if (FileHelper.CheckPathForProblemLocations(SelectedPath, out var failedCheck))
         {
             switch (failedCheck.CheckType)

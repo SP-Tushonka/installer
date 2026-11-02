@@ -151,6 +151,40 @@ public static class FileHelper
     }
 
     /// <summary>
+    ///     Check whether a folder can be installed into, by making a folder in the closest parent that exists.
+    ///     A file would be the wrong test, as Windows lets users make folders but not files in the root of C:
+    /// </summary>
+    /// <param name="path">Folder to check, which does not have to exist yet</param>
+    /// <returns>False when the folder can't be written to</returns>
+    public static bool CanInstallTo(string path)
+    {
+        try
+        {
+            var parent = new DirectoryInfo(Path.GetFullPath(path));
+
+            while (parent != null && !parent.Exists)
+            {
+                parent = parent.Parent;
+            }
+
+            if (parent == null)
+            {
+                return false;
+            }
+
+            var probe = Directory.CreateDirectory(Path.Join(parent.FullName, $".spt-write-test-{Guid.NewGuid():N}"));
+            probe.Delete();
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            Log.Debug(ex, "Can't install to {path}", GetRedactedPath(path));
+            return false;
+        }
+    }
+
+    /// <summary>
     ///     Get the drive a path is on, or the mount on Linux. The path does not have to exist yet.
     /// </summary>
     /// <param name="path">Path to look up</param>

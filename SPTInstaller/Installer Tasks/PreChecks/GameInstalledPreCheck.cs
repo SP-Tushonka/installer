@@ -41,9 +41,7 @@ public class GameInstalledPreCheck : PreCheckBase
 
         if (route.Patches == null)
         {
-            return PreCheckResult.FromError(
-                $"SPT {release.SPTVersion} needs client {route.ReleaseClient}, this game is client {route.GameClient}.\n\n{route.Problem}",
-                "Retry", RequestReevaluation);
+            return PreCheckResult.FromError(route.Problem!, "Retry", RequestReevaluation);
         }
 
         if (route.Patches.Count == 0)

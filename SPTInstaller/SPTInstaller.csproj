@@ -12,7 +12,8 @@
         <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
         <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">3.0.0.0</AssemblyVersion>
         <FileVersion Condition="'$(FileVersion)' == ''">$(AssemblyVersion)</FileVersion>
-        <Company>SPT</Company>
+        <Company>SP-Tushonka</Company>
+        <InvariantGlobalization Condition="'$(RuntimeIdentifier)' == 'linux-x64'">true</InvariantGlobalization>
     </PropertyGroup>
 
     <ItemGroup>

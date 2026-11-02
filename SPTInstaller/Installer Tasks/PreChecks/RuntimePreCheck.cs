@@ -52,11 +52,11 @@ public class RuntimePreCheck(RuntimeRequirement requirement) : PreCheckBase(requ
     }
 
     /// <summary>
-    ///     Download page for the runtime. Releases only list the Windows installers.
+    ///     Download page for the runtime. Releases only list the Windows installers, and Linux installs it per distribution.
     /// </summary>
     private string DownloadUrl => OperatingSystem.IsWindows()
         ? requirement.DownloadUrl
-        : $"https://dotnet.microsoft.com/en-us/download/dotnet/{ParseVersion(requirement.MinimumVersion).Major}.0";
+        : "https://learn.microsoft.com/en-us/dotnet/core/install/linux";
 
     private static string DotnetPath()
     {

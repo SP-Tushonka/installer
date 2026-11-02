@@ -24,6 +24,11 @@ internal class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (RootPreCheck.IsRoot)
+        {
+            Console.Error.WriteLine("The SPT installer should not be run as root or with sudo. Run it as your normal user.");
+        }
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -42,7 +47,13 @@ internal class Program
         ServiceHelper.Register<InternalData>();
 
 #if !TEST
+        if (!OperatingSystem.IsWindows())
+        {
+            ServiceHelper.Register<PreCheckBase, RootPreCheck>();
+        }
+
         ServiceHelper.Register<PreCheckBase, GameInstalledPreCheck>();
+
         if (OperatingSystem.IsWindows())
         {
             ServiceHelper.Register<PreCheckBase, NetFramework472PreCheck>();
@@ -50,6 +61,11 @@ internal class Program
 
         ServiceHelper.Register<PreCheckBase, FreeSpacePreCheck>();
         ServiceHelper.Register<PreCheckBase, GameLauncherPreCheck>();
+
+        if (!OperatingSystem.IsWindows())
+        {
+            ServiceHelper.Register<PreCheckBase, LinuxToolsPreCheck>();
+        }
 
         ServiceHelper.Register<InstallerTaskBase, InitializationTask>();
         ServiceHelper.Register<InstallerTaskBase, ReleaseCheckTask>();
