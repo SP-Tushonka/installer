@@ -33,8 +33,18 @@ public static class DownloadCacheHelper
 
     private static readonly TimeSpan ResumableLifetime = TimeSpan.FromDays(7);
 
-    public static string CachePath = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "spt-installer", "cache");
+    public static string CachePath = OperatingSystem.IsWindows()
+        ? Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "spt-installer", "cache")
+        : Path.Join(LinuxCacheFolder(), "spt-installer");
+
+    private static string LinuxCacheFolder()
+    {
+        var cacheHome = Environment.GetEnvironmentVariable("XDG_CACHE_HOME");
+
+        return string.IsNullOrWhiteSpace(cacheHome)
+            ? Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache")
+            : cacheHome;
+    }
 
     // Where patches and the SPT zip are saved. The free space check moves it into the install folder when the cache drive is short.
     public static string DownloadPath = CachePath;

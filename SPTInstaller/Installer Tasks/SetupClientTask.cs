@@ -105,6 +105,11 @@ public class SetupClientTask : InstallerTaskBase
         // SPT works without them, so a failure is logged instead of stopping the install
         ShortcutHelper.CreateSptShortcuts(_data.TargetInstallPath, sptPath);
 
+        if (!OperatingSystem.IsWindows())
+        {
+            ShortcutHelper.CreateLinuxMenuEntries(sptPath);
+        }
+
         // cleanup temp files
         SetStatus("Cleanup", "almost done :)", null, ProgressStyle.Indeterminate);
 

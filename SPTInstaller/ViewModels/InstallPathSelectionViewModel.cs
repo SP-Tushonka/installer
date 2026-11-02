@@ -63,7 +63,7 @@ public class InstallPathSelectionViewModel : ViewModelBase
 
     public string ThingsToNote { get; } = OperatingSystem.IsWindows()
         ? "Pick an empty folder outside the game\nAvoid Downloads, Desktop and Program Files\nDownloads are cached in %appdata%\\spt-installer, so a reinstall doesn't fetch them again"
-        : $"Pick an empty folder outside the game\nAvoid Downloads and Desktop\nDownloads are cached in {Path.GetDirectoryName(DownloadCacheHelper.CachePath)!.Replace(HomeFolder, "~")}, so a reinstall doesn't fetch them again";
+        : $"Pick an empty folder outside the game\nAvoid Downloads and Desktop\nDownloads are cached in {DownloadCacheHelper.CachePath.Replace(HomeFolder, "~")}, so a reinstall doesn't fetch them again";
 
     // A drive root can't be written to on Linux, so suggestions there point at the home folder
     private string SuggestedPath => OperatingSystem.IsWindows() ? $"{Path.GetPathRoot(SelectedPath)}SPT" : LinuxDefaultPath;

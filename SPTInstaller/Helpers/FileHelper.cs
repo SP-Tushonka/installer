@@ -231,6 +231,7 @@ public static class FileHelper
             new("Program Files", PathCheckType.Contains, PathCheckAction.Deny),
             new("Program Files (x86", PathCheckType.Contains, PathCheckAction.Deny),
             new(Path.Join("spt-installer", "cache"), PathCheckType.Contains, PathCheckAction.Deny),
+            new(DownloadCacheHelper.CachePath, PathCheckType.Contains, PathCheckAction.Deny),
             new("windows", PathCheckType.Contains, PathCheckAction.Deny),
             new("Drive Root", PathCheckType.DriveRoot, PathCheckAction.Deny)
         };

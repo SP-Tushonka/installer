@@ -39,6 +39,8 @@ public static class ShortcutHelper
         void SetPath([MarshalAs(UnmanagedType.LPWStr)] string file);
     }
 
+    private const string LinuxIconName = "spt";
+
     public static string DesktopPath
     {
         get
@@ -82,6 +84,7 @@ public static class ShortcutHelper
             }
             else
             {
+                InstallLinuxIcon();
                 CreateDesktopEntry(Path.Join(folder, "SPT.Launcher.desktop"), "SPT Launcher", launcher, sptPath, false);
                 CreateDesktopEntry(Path.Join(folder, "SPT.Server.desktop"), "SPT Server", server, sptPath, true);
             }
@@ -96,6 +99,44 @@ public static class ShortcutHelper
         }
     }
 
+    /// <summary>
+    ///     Add launcher and server entries to the application menu on Linux
+    /// </summary>
+    /// <param name="sptPath">Folder that has the launcher and server executables</param>
+    /// <returns>Whether the entries were created</returns>
+    public static Result CreateLinuxMenuEntries(string sptPath)
+    {
+        try
+        {
+            return CreateSptShortcuts(Directory.CreateDirectory(Path.Join(LinuxDataFolder, "applications")).FullName, sptPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Error(ex, "Could not create the application menu folder");
+            return Result.FromError($"Could not add SPT to the application menu: {ex.Message}");
+        }
+    }
+
+    private static string LinuxDataFolder
+    {
+        get
+        {
+            var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+
+            return string.IsNullOrWhiteSpace(dataHome)
+                ? Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share")
+                : dataHome;
+        }
+    }
+
+    private static void InstallLinuxIcon()
+    {
+        var folder = Path.Join(LinuxDataFolder, "icons", "hicolor", "256x256", "apps");
+
+        Directory.CreateDirectory(folder);
+        FileHelper.StreamAssemblyResourceOut("spt-icon.png", Path.Join(folder, $"{LinuxIconName}.png"));
+    }
+
     private static void CreateDesktopEntry(string shortcutPath, string name, string target, string workingDirectory, bool terminal)
     {
         File.WriteAllLines(shortcutPath,
@@ -103,6 +144,8 @@ public static class ShortcutHelper
             "[Desktop Entry]",
             "Type=Application",
             $"Name={name}",
+            $"Icon={LinuxIconName}",
+            "Categories=Game;",
             $"Exec=\"{target}\"",
             $"Path={workingDirectory}",
             $"Terminal={(terminal ? "true" : "false")}",
