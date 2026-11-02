@@ -149,6 +149,14 @@ public class MessageViewModel : ViewModelBase
         {
             try
             {
+                var logPath = data.DebugMode ? App.LogDebugPath : App.LogPath;
+
+                if (!OperatingSystem.IsWindows() && TryCopyWithClipboardTool(logPath))
+                {
+                    ClipCommandText = "Copied!";
+                    return;
+                }
+
                 if (desktop.MainWindow?.Clipboard == null)
                 {
                     ClipCommandText = "Could not get clipboard :(";
@@ -157,7 +165,7 @@ public class MessageViewModel : ViewModelBase
                 
                 var filesToCopy = new List<IStorageFile>();
                 
-                var logFile = await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(data.DebugMode ? App.LogDebugPath : App.LogPath);
+                var logFile = await desktop.MainWindow.StorageProvider.TryGetFileFromPathAsync(logPath);
                     
                 if (logFile == null)
                 {
@@ -176,6 +184,41 @@ public class MessageViewModel : ViewModelBase
             }
         } 
     });
+    
+    /// <summary>
+    ///     Copy a file with wl-copy or xclip, which keep it on the clipboard after the installer closes
+    /// </summary>
+    /// <param name="path">File to copy</param>
+    /// <returns>Whether the tool took the file</returns>
+    private static bool TryCopyWithClipboardTool(string path)
+    {
+        var startInfo = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") != null
+            ? new ProcessStartInfo("wl-copy", "--type text/uri-list")
+            : new ProcessStartInfo("xclip", "-selection clipboard -t text/uri-list");
+
+        startInfo.RedirectStandardInput = true;
+
+        try
+        {
+            using var process = Process.Start(startInfo);
+
+            if (process == null)
+            {
+                return false;
+            }
+
+            process.StandardInput.Write($"{new Uri(path).AbsoluteUri}\r\n");
+            process.StandardInput.Close();
+
+            // Both tools fork into the background to serve the clipboard, so this only waits for the parent
+            return process.WaitForExit(3000) && process.ExitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "Could not copy with {tool}", startInfo.FileName);
+            return false;
+        }
+    }
     
     public ICommand CloseCommand { get; set; } = ReactiveCommand.Create(() =>
     {
