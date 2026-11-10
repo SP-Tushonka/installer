@@ -33,6 +33,19 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-incremental --no-restore
 
+      - name: Publish Linux build
+        run: |
+          dotnet publish SPTInstaller/SPTInstaller.csproj -c Release -r linux-x64             -p:PublishSingleFile=true --self-contained true -o ./publish-linux
+
+          chmod +x ./publish-linux/SPTInstaller
+          tar -czf SPTInstaller-linux-x64.tar.gz -C ./publish-linux SPTInstaller
+
+      # Artifacts are zipped without file modes, the tarball keeps the exec bit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SPTInstaller-linux-x64
+          path: SPTInstaller-linux-x64.tar.gz
+
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -84,7 +97,11 @@ jobs:
             -p:InformationalVersion=${{ steps.version.outputs.version }} \
             -o ./publish-linux
 
-          cp ./publish-linux/SPTInstaller ./publish/SPTInstaller
+          chmod +x ./publish-linux/SPTInstaller
+          cp -p ./publish-linux/SPTInstaller ./publish/SPTInstaller
+
+          # A download loses the exec bit, the tarball keeps it for people grabbing the release by hand
+          tar -czf ./publish/SPTInstaller-linux-x64.tar.gz -C ./publish SPTInstaller
 
       - name: Collect release notes
         run: |
@@ -170,7 +187,7 @@ jobs:
         run: |
           if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
             gh release edit "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt"
-            gh release upload "${{ github.ref_name }}" ./publish/SPTInstaller.exe ./publish/SPTInstaller --clobber
+            gh release upload "${{ github.ref_name }}" ./publish/SPTInstaller.exe ./publish/SPTInstaller ./publish/SPTInstaller-linux-x64.tar.gz --clobber
           else
-            gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt" --target ${{ github.sha }} ./publish/SPTInstaller.exe ./publish/SPTInstaller
+            gh release create "${{ github.ref_name }}" --title "Release ${{ github.ref_name }}" --notes-file "$RUNNER_TEMP/notes.txt" --target ${{ github.sha }} ./publish/SPTInstaller.exe ./publish/SPTInstaller ./publish/SPTInstaller-linux-x64.tar.gz
           fi
