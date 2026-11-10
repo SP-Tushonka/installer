@@ -22,63 +22,47 @@ public static class FileHelper
         return path;
     }
     
+    /// <param name="skip">Takes the path relative to <paramref name="sourceDir"/>, separated by '/'</param>
     public static Result CopyDirectoryWithProgress(DirectoryInfo sourceDir, DirectoryInfo targetDir,
-        Action<string, int> updateCallback = null, string[] exclusions = null)
+        Action<string, int>? updateCallback = null, Func<string, bool>? skip = null)
     {
         try
         {
             var allFiles = sourceDir.GetFiles("*", SearchOption.AllDirectories);
             var fileCopies = new List<CopyInfo>();
             int count = 0;
-            
-            // filter files before starting copy
+
             foreach (var file in allFiles)
             {
                 count++;
                 updateCallback?.Invoke("getting list of files to copy", (int)Math.Floor((double)count / allFiles.Length * 100));
-                
-                var currentFileRelativePath = file.FullName.Replace(sourceDir.FullName, "");
 
-                if (exclusions != null)
-                {
-                    // check exclusions
-                    foreach (var exclusion in exclusions)
-                    {
-                        if (currentFileRelativePath.StartsWith(exclusion) || currentFileRelativePath == exclusion)
-                        {
-                            Log.Debug(
-                                $"EXCLUSION FOUND :: FILE\nExclusion: '{exclusion}'\nPath: '{currentFileRelativePath}'");
-                            break;
-                        }
-                    }
-                }
+                var relativePath = Path.GetRelativePath(sourceDir.FullName, file.FullName);
 
-                // don't copy .bak files
-                if (currentFileRelativePath.EndsWith(".bak"))
+                if (skip != null && skip(relativePath.Replace(Path.DirectorySeparatorChar, '/')))
                 {
-                    Log.Debug($"EXCLUDING BAK FILE :: {currentFileRelativePath}");
+                    Log.Debug("Not copying {path}", relativePath);
                     continue;
                 }
-                
-                fileCopies.Add(new CopyInfo(file.FullName, file.FullName.Replace(sourceDir.FullName, targetDir.FullName)));
+
+                fileCopies.Add(new CopyInfo(file.FullName, Path.Join(targetDir.FullName, relativePath)));
             }
 
             count = 0;
-            
-            // process copy info for files that need to be copied
+
             foreach (var copyInfo in fileCopies)
             {
                 count++;
                 updateCallback?.Invoke(copyInfo.FileName, (int)Math.Floor((double)count / fileCopies.Count * 100));
-                
+
                 var result = copyInfo.Copy();
-                
+
                 if (!result.Succeeded)
                 {
                     return result;
                 }
             }
-            
+
             return Result.FromSuccess();
         }
         catch (Exception ex)
@@ -87,7 +71,7 @@ public static class FileHelper
             return Result.FromError(ex.Message);
         }
     }
-    
+
     public static bool StreamAssemblyResourceOut(string resourceName, string outputFilePath)
     {
         try
