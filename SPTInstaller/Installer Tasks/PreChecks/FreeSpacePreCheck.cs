@@ -44,9 +44,9 @@ public class FreeSpacePreCheck : PreCheckBase
             var installRoot = FileHelper.DriveRoot(installPath);
             var cacheRoot = FileHelper.DriveRoot(DownloadCacheHelper.CachePath);
 
-            var gameSize = DirectorySizeHelper.GetSizeOfDirectory(new DirectoryInfo(_internalData.OriginalGamePath));
+            var gameFiles = GameFiles(_internalData.OriginalGamePath);
 
-            if (gameSize == -1)
+            if (gameFiles == null)
             {
                 return PreCheckResult.FromError("An error occurred while getting the game source directory size. This is most likely because the game is not installed");
             }
@@ -56,18 +56,18 @@ public class FreeSpacePreCheck : PreCheckBase
             var sized = documents != null;
             string[] downloadFolders = [DownloadCacheHelper.CachePath, DownloadCacheHelper.InstallFolderDownloads(installPath)];
 
-            // Each step is extracted and then copied into the install folder before it is cleared, so the largest step counts twice
-            var patchingSpace = sized ? 2 * documents!.Select(document => document.Entries.Sum(entry => entry.Size ?? 0)).DefaultIfEmpty().Max() : FallbackPatchingSpace;
+            var client = sized ? Simulate(gameFiles, documents!) : Unsized(gameFiles);
             var downloadSpace = sized ? documents!.Sum(document => StillToDownload(document, downloadFolders)) : FallbackCacheSpace;
 
             var releaseSize = await ReleaseSizeAsync();
             var releaseExtract = releaseSize * ReleaseExtractRatio;
             downloadSpace += StillToDownloadRelease(releaseSize, downloadFolders);
 
-            var installNeed = gameSize + patchingSpace + releaseExtract;
+            // SPT is extracted once the patching space is cleared
+            var installNeed = Math.Max(client.PatchingPeak, client.Final + releaseExtract);
 
             // What stays once the patching space and downloads are cleared
-            var installedSize = Size(gameSize + releaseExtract, 0);
+            var installedSize = Size(client.Final + releaseExtract, 0);
             Summary = $"{installedSize} installed";
             var systemRoot = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) ?? "C:\\";
 
@@ -126,14 +126,16 @@ public class FreeSpacePreCheck : PreCheckBase
 
             SpacePlan Plan(string downloadRoot)
             {
-                List<string> installItems = [$"• Copy of the game: {Size(gameSize)}"];
+                List<string> installItems = [$"• Copy of the game: {Size(client.Copied)}"
+                    + (client.Skipped > 0 ? $", leaving out {Size(client.Skipped)} the patches remove" : "")];
 
-                if (patchingSpace > 0)
+                if (client.PatchingPeak > client.Copied)
                 {
-                    installItems.Add($"• Applying the patches, freed afterwards: {Size(patchingSpace)}");
+                    installItems.Add($"• Applying the patches, freed afterwards: up to {Size(client.PatchingPeak - client.Copied)}");
                 }
 
-                installItems.Add($"• SPT itself: {Size(releaseExtract)}");
+                installItems.Add($"• Patched game: {Size(client.Final)}");
+                installItems.Add($"• SPT itself, extracted after patching: {Size(releaseExtract)}");
 
                 List<string> downloadItems = [$"• Patch and SPT downloads: {Size(downloadSpace)}"];
 
@@ -175,6 +177,63 @@ public class FreeSpacePreCheck : PreCheckBase
         {
             return PreCheckResult.FromException(ex);
         }
+    }
+
+    /// <param name="Final">The patched client. Estimated, since a document does not say how big a patched file ends up.</param>
+    private record ClientSpace(long Copied, long Skipped, long PatchingPeak, long Final);
+
+    private static Dictionary<string, long>? GameFiles(string gamePath)
+    {
+        try
+        {
+            return new DirectoryInfo(gamePath).EnumerateFiles("*", SearchOption.AllDirectories)
+                .Select(file => new KeyValuePair<string, long>(Path.GetRelativePath(gamePath, file.FullName).Replace(Path.DirectorySeparatorChar, '/'), file.Length))
+                .Where(file => !file.Key.StartsWith("Logs/", StringComparison.OrdinalIgnoreCase) && !file.Key.EndsWith(".bak"))
+                .ToDictionary(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Could not read the game folder");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Walks the route over the copied files, the same way CopyClientTask and SetupClientTask go through it
+    /// </summary>
+    private static ClientSpace Simulate(Dictionary<string, long> gameFiles, List<PatchDocument> documents)
+    {
+        var skipped = SkippedGameFiles.Find(documents.Select(document => document.Entries));
+        var files = gameFiles.Where(file => !skipped.Contains(file.Key)).ToDictionary(StringComparer.OrdinalIgnoreCase);
+        var copied = files.Values.Sum();
+        var peak = copied;
+
+        foreach (var document in documents)
+        {
+            // Each step's files are extracted and then copied into the install folder before they are cleared, so a step counts twice
+            peak = Math.Max(peak, files.Values.Sum() + 2 * document.Entries.Sum(entry => entry.Size ?? 0));
+
+            foreach (var entry in document.Entries.Where(entry => entry.Path != null))
+            {
+                if (entry.Kind == PatchDocumentKind.Del)
+                {
+                    files.Remove(entry.Path!);
+                }
+                else if (entry.Kind == PatchDocumentKind.New)
+                {
+                    files[entry.Path!] = entry.Size ?? 0;
+                }
+            }
+        }
+
+        return new ClientSpace(copied, gameFiles.Values.Sum() - copied, peak, files.Values.Sum());
+    }
+
+    private static ClientSpace Unsized(Dictionary<string, long> gameFiles)
+    {
+        var size = gameFiles.Values.Sum();
+
+        return new ClientSpace(size, 0, size + FallbackPatchingSpace, size);
     }
 
     private record DriveNeed(string Root, string Role, long Need, long Free, List<string> Items);
