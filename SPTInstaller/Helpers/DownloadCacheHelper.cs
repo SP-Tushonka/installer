@@ -34,8 +34,50 @@ public static class DownloadCacheHelper
     private static readonly TimeSpan ResumableLifetime = TimeSpan.FromDays(7);
 
     public static string CachePath = OperatingSystem.IsWindows()
-        ? Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "spt-installer", "cache")
+        ? WindowsCacheFolder()
         : Path.Join(LinuxCacheFolder(), "spt-installer");
+
+    private static string RoamingCachePath => Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "spt-installer", "cache");
+
+    // On the system drive the cache goes to temp, where Windows' own cleanup can reclaim it
+    private static string WindowsCacheFolder()
+    {
+        var systemRoot = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+
+        return string.Equals(Path.GetPathRoot(RoamingCachePath), systemRoot, StringComparison.OrdinalIgnoreCase)
+            ? Path.Join(Path.GetTempPath(), "spt-installer", "cache")
+            : RoamingCachePath;
+    }
+
+    /// <summary>
+    /// Deletes the cache older installers kept in AppData when the cache now lives in temp
+    /// </summary>
+    public static void RemoveRoamingCache()
+    {
+        if (!OperatingSystem.IsWindows() || string.Equals(CachePath, RoamingCachePath, StringComparison.OrdinalIgnoreCase)
+            || !Directory.Exists(RoamingCachePath))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(RoamingCachePath, true);
+
+            var parent = Path.GetDirectoryName(RoamingCachePath)!;
+
+            if (!Directory.EnumerateFileSystemEntries(parent).Any())
+            {
+                Directory.Delete(parent);
+            }
+
+            Log.Information("Removed the old cache from {path}", RoamingCachePath);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Could not remove the old cache from {path}", RoamingCachePath);
+        }
+    }
 
     private static string LinuxCacheFolder()
     {

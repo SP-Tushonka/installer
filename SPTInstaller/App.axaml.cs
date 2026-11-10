@@ -45,6 +45,7 @@ public partial class App : Application
                 restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information)
             .CreateLogger();
 
+        DownloadCacheHelper.RemoveRoamingCache();
         DownloadCacheHelper.ClearCacheOnVersionChange(
             System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown");
 
