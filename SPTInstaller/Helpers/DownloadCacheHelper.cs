@@ -487,7 +487,7 @@ public static class DownloadCacheHelper
     // Only the HTTP stack's own failures are worth retrying over another route. A local file error is not.
     // HttpIOException is a connection dropped mid-body, and a TLS record failing to decrypt is an IOException over a Win32Exception.
     private static bool IsTransportFailure(Exception exception)
-        => exception is HttpRequestException or HttpIOException or TaskCanceledException
+        => exception is HttpRequestException or HttpIOException or TaskCanceledException or TimeoutException
            || (exception is IOException && exception.InnerException is System.ComponentModel.Win32Exception);
 
     /// <summary>

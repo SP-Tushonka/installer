@@ -6,56 +6,50 @@ namespace SPTInstaller.Helpers;
 
 public static class HttpClientProgressExtensions
 {
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(20);
+
     public static async Task<bool> DownloadDataAsync(this HttpClient client, string requestUrl, Stream destination,
         IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
-        using var response = await client.GetAsync(requestUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        stall.CancelAfter(StallTimeout);
 
-        var contentLength = response.Content.Headers.ContentLength;
-        using var download = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-        // no progress... no contentLength... very sad
-        if (progress is null || !contentLength.HasValue)
+        try
         {
-            await download.CopyToAsync(destination, cancellationToken);
-            return true;
+            using var response = await client.GetAsync(requestUrl, HttpCompletionOption.ResponseHeadersRead, stall.Token);
+            response.EnsureSuccessStatusCode();
+
+            var contentLength = response.Content.Headers.ContentLength;
+            await using var download = await response.Content.ReadAsStreamAsync(stall.Token);
+
+            var buffer = new byte[81920];
+            long total = 0;
+
+            while (true)
+            {
+                stall.CancelAfter(StallTimeout);
+
+                var read = await download.ReadAsync(buffer, stall.Token);
+
+                if (read == 0)
+                {
+                    break;
+                }
+
+                await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                total += read;
+
+                if (contentLength > 0)
+                {
+                    progress?.Report(total * 100d / contentLength.Value);
+                }
+            }
+
+            return !contentLength.HasValue || total == contentLength.Value;
         }
-
-        // Such progress and contentLength much reporting Wow!
-        var progressWrapper = new Progress<long>(totalBytes =>
-            progress.Report(GetProgressPercentage(totalBytes, contentLength.Value)));
-        var readBytes = await download.CopyToAsync(destination, 81920, progressWrapper, cancellationToken);
-        return readBytes == contentLength.Value;
-
-        float GetProgressPercentage(float totalBytes, float currentBytes) => (totalBytes / currentBytes) * 100f;
-    }
-
-    private static async Task<long> CopyToAsync(this Stream source, Stream destination, int bufferSize,
-        IProgress<long>? progress = null, CancellationToken cancellationToken = default)
-    {
-        if (bufferSize < 0)
-            throw new ArgumentOutOfRangeException(nameof(bufferSize));
-        if (source is null)
-            throw new ArgumentNullException(nameof(source));
-        if (!source.CanRead)
-            throw new InvalidOperationException($"'{nameof(source)}' is not readable.");
-        if (destination == null)
-            throw new ArgumentNullException(nameof(destination));
-        if (!destination.CanWrite)
-            throw new InvalidOperationException($"'{nameof(destination)}' is not writable.");
-        
-        var buffer = new byte[bufferSize];
-        long totalBytesRead = 0;
-        int bytesRead;
-        while ((bytesRead =
-                   await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
+        catch (OperationCanceledException) when (stall.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
-            totalBytesRead += bytesRead;
-            progress?.Report(totalBytesRead);
+            throw new TimeoutException($"No data from {requestUrl} for {StallTimeout.TotalSeconds} s");
         }
-
-        return totalBytesRead;
     }
 }
