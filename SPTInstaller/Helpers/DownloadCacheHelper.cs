@@ -146,8 +146,12 @@ public static class DownloadCacheHelper
     public static string PatchDocumentFileName(int sourceClientVersion, int targetClientVersion)
         => $"patch-{sourceClientVersion}-{targetClientVersion}.json";
 
-    private const string PrimaryHost = "https://patcher.sp-tushonka.com";
-    private const string FallbackHost = "https://mirror.sp-tushonka.com";
+    private static readonly string[] Hosts =
+    [
+        "https://patcher.sp-tushonka.com",
+        "https://mirror.sp-tushonka.com",
+        "https://si.sp-tushonka.com",
+    ];
 
     public static readonly string[] ReleaseUrls = Endpoints("release.json", "SPT_RELEASE_URL");
     public static readonly string[] PatchManifestUrls = Endpoints("mirrors.json", "SPT_MIRRORS_URL");
@@ -161,7 +165,7 @@ public static class DownloadCacheHelper
     {
         var custom = overrideVariable is null ? null : Environment.GetEnvironmentVariable(overrideVariable);
         return string.IsNullOrWhiteSpace(custom)
-            ? [$"{PrimaryHost}/{fileName}", $"{FallbackHost}/{fileName}"]
+            ? Hosts.Select(host => $"{host}/{fileName}").ToArray()
             : [custom];
     }
     
