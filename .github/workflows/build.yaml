@@ -131,6 +131,45 @@ jobs:
 
           cat ./publish/installer.json
 
+      - name: Upload to mirrors
+        env:
+          # One mirror per line as "host web-root", all reached with the same user and key
+          MIRRORS: ${{ vars.MIRRORS }}
+          MIRROR_USER: ${{ secrets.MIRROR_USER }}
+          MIRROR_SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
+        run: |
+          if [ -z "$MIRRORS" ]; then
+            echo "No mirror configured, skipping."
+            exit 0
+          fi
+
+          key="$RUNNER_TEMP/mirror_key"
+
+          install -m 600 /dev/null "$key"
+          printf '%s\n' "$MIRROR_SSH_KEY" > "$key"
+
+          upload() {
+          sftp -b - -i "$key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$MIRROR_USER@$1" <<SFTP
+          put ./publish/SPTInstaller.exe $2/SPTInstaller.exe.part
+          rename $2/SPTInstaller.exe.part $2/SPTInstaller.exe
+          put ./publish/SPTInstaller $2/SPTInstaller.part
+          rename $2/SPTInstaller.part $2/SPTInstaller
+          put ./publish/installer.json $2/installer.json.part
+          rename $2/installer.json.part $2/installer.json
+          SFTP
+          }
+
+          failed=0
+
+          while read -r host root; do
+            if [ -n "$host" ] && ! upload "$host" "$root"; then
+              echo "::error::Could not upload to $host"
+              failed=1
+            fi
+          done <<< "$MIRRORS"
+
+          exit $failed
+
       - name: Upload to R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -153,33 +192,6 @@ jobs:
             --endpoint-url "$ENDPOINT" \
             --content-type application/json \
             --cache-control "public, max-age=300"
-
-      - name: Upload to mirror
-        env:
-          MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
-          MIRROR_USER: ${{ secrets.MIRROR_USER }}
-          MIRROR_SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
-          MIRROR_ROOT: ${{ vars.MIRROR_ROOT || '/var/www/mirror.sp-tushonka.com' }}
-        run: |
-          if [ -z "$MIRROR_HOST" ]; then
-            echo "No mirror configured, skipping."
-            exit 0
-          fi
-
-          key="$RUNNER_TEMP/mirror_key"
-
-          install -m 600 /dev/null "$key"
-          printf '%s\n' "$MIRROR_SSH_KEY" > "$key"
-
-          sftp -b - -i "$key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            "$MIRROR_USER@$MIRROR_HOST" <<SFTP
-          put ./publish/SPTInstaller.exe $MIRROR_ROOT/SPTInstaller.exe.part
-          rename $MIRROR_ROOT/SPTInstaller.exe.part $MIRROR_ROOT/SPTInstaller.exe
-          put ./publish/SPTInstaller $MIRROR_ROOT/SPTInstaller.part
-          rename $MIRROR_ROOT/SPTInstaller.part $MIRROR_ROOT/SPTInstaller
-          put ./publish/installer.json $MIRROR_ROOT/installer.json.part
-          rename $MIRROR_ROOT/installer.json.part $MIRROR_ROOT/installer.json
-          SFTP
 
       - name: Create Release
         env:
